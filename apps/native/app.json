@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "GhostWire",
+    "slug": "ghostwire",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "ghostwire",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": {
+      "backgroundColor": "#0e1621",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.ghostwire",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan a GhostWire invite to join a session.",
+        "NSBluetoothAlwaysUsageDescription": "GhostWire uses Bluetooth to form an offline mesh.",
+        "NSBluetoothPeripheralUsageDescription": "GhostWire uses Bluetooth to form an offline mesh.",
+        "NSLocalNetworkUsageDescription": "GhostWire connects to peers on your local network."
+      }
+    },
+    "android": {
+      "package": "app.ghostwire",
+      "permissions": [
+        "CAMERA",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_ADVERTISE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
+    },
+    "plugins": []
+  }
+}
