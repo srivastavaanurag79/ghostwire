@@ -1,5 +1,6 @@
-# Project spec is local-only and must never be pushed.
+# Project spec and draft article are local-only and must never be pushed.
 goal.md
+article.md
 
 # Dependencies
 node_modules/
