@@ -33,6 +33,9 @@ export default function JoinPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("pin") === "1" && !window.location.hash) setPinMode(true);
+      if (!process.env.NEXT_PUBLIC_RELAY_URL && window.location.protocol === "http:") {
+        setRelayInput((current) => current || `ws://${window.location.host}`);
+      }
     }
   }, []);
   const [invitedRole, setInvitedRole] = useState<Role | null>(null);

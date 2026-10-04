@@ -15,13 +15,19 @@ export default function CreatePage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [mode, setMode] = useState<Mode>(DEFAULT_RELAY_URL ? "relay" : "webrtc");
-  const [relayUrl, setRelayUrl] = useState(DEFAULT_RELAY_URL || "ws://192.168.1.10:8787");
+  const [relayUrl, setRelayUrl] = useState(DEFAULT_RELAY_URL);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isHttps, setIsHttps] = useState(false);
 
   useEffect(() => {
     setIsHttps(typeof window !== "undefined" && window.location.protocol === "https:");
+    // If the app is served over HTTP (e.g. by the relay on the LAN), default the
+    // relay to the same host so creating a PIN session needs no input.
+    if (typeof window !== "undefined" && !DEFAULT_RELAY_URL && window.location.protocol === "http:") {
+      setRelayUrl((current) => current || `ws://${window.location.host}`);
+      setMode((current) => (current === "webrtc" ? "relay" : current));
+    }
   }, []);
 
   async function start() {

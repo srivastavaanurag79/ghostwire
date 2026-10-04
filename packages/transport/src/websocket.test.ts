@@ -100,4 +100,45 @@ describe("WebSocketTransport", () => {
     a.close();
     b.close();
   });
+
+  it("opens a PIN room and hands the config to a joiner", async () => {
+    const roomServer = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+    await new Promise<void>((resolve) => roomServer.once("listening", () => resolve()));
+    const roomPort = (roomServer.address() as { port: number }).port;
+    const configs = new Map<string, unknown>();
+
+    roomServer.on("connection", (socket) => {
+      const id = `r-${Math.random().toString(36).slice(2, 7)}`;
+      (socket as unknown as { gwId: string }).gwId = id;
+      socket.send(JSON.stringify({ t: "welcome", id }));
+      socket.on("message", (raw, isBinary) => {
+        if (isBinary) return;
+        const msg = JSON.parse(raw.toString());
+        if (msg.t === "host") {
+          configs.set(msg.pin, msg.config);
+          socket.send(JSON.stringify({ t: "hosted", pin: msg.pin }));
+        } else if (msg.t === "guest") {
+          const config = configs.get(msg.pin);
+          if (config) socket.send(JSON.stringify({ t: "config", config }));
+          else socket.send(JSON.stringify({ t: "error", message: "no room" }));
+        }
+      });
+    });
+
+    const host = new WebSocketTransport(`ws://127.0.0.1:${roomPort}`);
+    await host.open();
+    await host.host("123456", { sid: "s-1", sk: "k", apk: "a", st: 123 });
+
+    const guest = new WebSocketTransport(`ws://127.0.0.1:${roomPort}`);
+    await guest.open();
+    const config = await guest.join("123456");
+    expect(config.sid).toBe("s-1");
+    expect(config.st).toBe(123);
+
+    await expect(guest.join("000000")).rejects.toThrow();
+
+    host.close();
+    guest.close();
+    await new Promise<void>((resolve) => roomServer.close(() => resolve()));
+  });
 });
