@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { generateSigningKeyPair, randomBytes } from "@ghostwire/crypto";
-import { decodeQRPayload, encodeQRPayload, minifySdp, type QRPayload } from "./index";
+import { decodeQRPayload, encodeQRPayload, type QRPayload } from "./index";
 
 /** A large, Chromium-like datachannel offer (mDNS + srflx + tcp candidates). */
 function realisticSdp(): string {
   const candidates = [
-    "candidate:842163049 1 udp 1677729535 192.168.1.42 54321 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag aBcD network-cost 999",
-    "candidate:1 1 udp 2122260223 192.168.1.42 54321 typ host generation 0 ufrag aBcD network-cost 999",
-    "candidate:2 1 udp 2122194687 fe80::1c2d:3e4f:5a6b:7c8d 54322 typ host generation 0 ufrag aBcD network-cost 999",
-    "candidate:3 1 udp 2122129151 8f9a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8.local 54323 typ host generation 0 ufrag aBcD network-cost 999",
-    "candidate:4 1 tcp 1518280447 192.168.1.42 9 typ host tcptype active generation 0 ufrag aBcD network-cost 999",
+    "a=candidate:842163049 1 udp 1677729535 192.168.1.42 54321 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag aBcD network-cost 999",
+    "a=candidate:1 1 udp 2122260223 192.168.1.42 54321 typ host generation 0 ufrag aBcD network-cost 999",
+    "a=candidate:2 1 udp 2122194687 fe80::1c2d:3e4f:5a6b:7c8d 54322 typ host generation 0 ufrag aBcD network-cost 999",
+    "a=candidate:3 1 udp 2122129151 8f9a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8.local 54323 typ host generation 0 ufrag aBcD network-cost 999",
+    "a=candidate:4 1 tcp 1518280447 192.168.1.42 9 typ host tcptype active generation 0 ufrag aBcD network-cost 999",
   ];
   return [
     "v=0",
@@ -74,16 +74,17 @@ function render(text: string, scale = 6, quiet = 4) {
 }
 
 describe("QR scannability", () => {
-  it("minifies and round-trips the SDP", () => {
+  it("compacts and round-trips the SDP", () => {
     const payload = sampleOffer();
     const encoded = encodeQRPayload(payload);
     expect(encoded.startsWith("GW1:")).toBe(true);
 
     const decoded = decodeQRPayload(encoded);
     expect(decoded.sig?.type).toBe("offer");
-    expect(decoded.sig?.sdp).toBe(minifySdp(payload.sig!.sdp!));
     expect(decoded.sig?.sdp).toContain("a=ice-ufrag:");
-    expect(decoded.sig?.sdp).toContain("a=fingerprint:");
+    expect(decoded.sig?.sdp).toContain("a=ice-pwd:");
+    expect(decoded.sig?.sdp).toContain("a=fingerprint:sha-256");
+    expect(decoded.sig?.sdp).toContain("typ host");
   });
 
   it("produces a small, decodable QR", () => {
@@ -93,7 +94,7 @@ describe("QR scannability", () => {
     console.log(
       `[qr] encoded=${encoded.length} chars, raw sdp=${realisticSdp().length} bytes, modules=${qr.modules.size}`,
     );
-    expect(qr.modules.size).toBeLessThanOrEqual(97);
+    expect(qr.modules.size).toBeLessThanOrEqual(83);
 
     const { data, dim } = render(encoded);
     const result = jsQR(data, dim, dim, { inversionAttempts: "attemptBoth" });

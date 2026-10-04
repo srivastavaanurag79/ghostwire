@@ -3,6 +3,9 @@ import { decodeUtf8, encodeUtf8, fromBase64Url, toBase64Url } from "@ghostwire/c
 import type { RoleToken, Role } from "@ghostwire/protocol";
 import { deflateSync, inflateSync } from "fflate";
 import { z } from "zod";
+import { decodeSdp, encodeSdp } from "./sdp";
+
+export { encodeSdp, decodeSdp } from "./sdp";
 
 /**
  * Human-visible prefix identifying a GhostWire bootstrap payload. Scanners that
@@ -23,7 +26,9 @@ export interface SignalingPayload {
   type: "offer" | "answer";
   /** Non-trickle SDP: gathering is complete, so no separate ICE exchange. */
   sdp?: string;
-  /** LZ-compressed SDP (raw bytes), present on encoded payloads. */
+  /** Compact binary SDP (preferred). */
+  sdpc?: Uint8Array;
+  /** Deflated SDP text (fallback when the compact codec cannot parse it). */
   sdpz?: Uint8Array;
   /** Shared connection id chosen by the offerer. */
   id?: string;
@@ -60,6 +65,7 @@ const bytes = z.instanceof(Uint8Array);
 const signalingSchema = z.object({
   type: z.enum(["offer", "answer"]),
   sdp: z.string().optional(),
+  sdpc: bytes.optional(),
   sdpz: bytes.optional(),
   id: z.string().optional(),
 });
@@ -142,19 +148,25 @@ export function minifySdp(sdp: string): string {
   return `${output.join("\r\n")}\r\n`;
 }
 
-/** Compress an SDP into `sdpz` so the QR stays small enough to scan. */
+/** Compress an SDP into `sdpc`/`sdpz` so the QR stays small enough to scan. */
 function packSignaling(sig: SignalingPayload): SignalingPayload {
-  if (sig.sdp && !sig.sdpz) {
+  if (sig.sdp && !sig.sdpz && !sig.sdpc) {
     const { sdp, ...rest } = sig;
+    const compact = encodeSdp(sdp);
+    if (compact) return { ...rest, sdpc: compact };
     return { ...rest, sdpz: deflateSync(encodeUtf8(minifySdp(sdp))) };
   }
   return sig;
 }
 
-/** Restore `sdp` from `sdpz` after decoding. */
+/** Restore `sdp` from `sdpc`/`sdpz` after decoding. */
 function unpackSignaling(sig: SignalingPayload | undefined): SignalingPayload | undefined {
-  if (!sig) return undefined;
-  if (!sig.sdp && sig.sdpz) {
+  if (!sig || sig.sdp) return sig;
+  if (sig.sdpc) {
+    const rebuilt = decodeSdp(sig.sdpc);
+    if (rebuilt) return { ...sig, sdp: rebuilt };
+  }
+  if (sig.sdpz) {
     return { ...sig, sdp: decodeUtf8(inflateSync(sig.sdpz)) };
   }
   return sig;

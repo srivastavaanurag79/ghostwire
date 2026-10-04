@@ -501,7 +501,10 @@ function InviteModal({
 
         {qr && (
           <div className="mt-4 flex flex-col items-center gap-3">
-            <QRCanvas value={qr} size={big ? 520 : 340} />
+            <QRCanvas value={inviteLink ?? qr ?? ""} size={big ? 520 : 340} />
+            <p className="max-w-xs text-center text-[11px] text-white/50">
+              This QR is a normal link — any phone camera or Google Lens opens it directly.
+            </p>
             <button
               onClick={() => setBig((b) => !b)}
               className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium hover:bg-white/5"
