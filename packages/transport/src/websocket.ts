@@ -25,12 +25,28 @@ export interface WebSocketTransportOptions {
   reconnectDelayMs?: number;
 }
 
+/** Session bootstrap the relay stores for a PIN and hands to joiners. */
+export interface RelayRoomConfig {
+  sid: string;
+  /** base64 session key. */
+  sk: string;
+  /** base64 admin signing public key. */
+  apk: string;
+  st: number;
+  role?: string;
+}
+
 export class WebSocketTransport extends BaseTransport {
   private socket: WebSocket | null = null;
   private selfId: string | null = null;
   private readonly peers = new Set<string>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
+  private pendingHost: { resolve: () => void; reject: (e: Error) => void } | null = null;
+  private pendingGuest: {
+    resolve: (config: RelayRoomConfig) => void;
+    reject: (e: Error) => void;
+  } | null = null;
 
   constructor(
     private readonly url: string,
@@ -55,6 +71,36 @@ export class WebSocketTransport extends BaseTransport {
 
   get isOpen(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  /** Open a room (host) with a short PIN and this session's bootstrap config. */
+  async host(pin: string, config: RelayRoomConfig): Promise<void> {
+    await this.open();
+    return new Promise((resolve, reject) => {
+      this.pendingHost = { resolve, reject };
+      this.socket?.send(JSON.stringify({ t: "host", pin, config }));
+      setTimeout(() => {
+        if (this.pendingHost) {
+          this.pendingHost = null;
+          reject(new Error("Relay did not acknowledge the host request"));
+        }
+      }, 10_000);
+    });
+  }
+
+  /** Join an existing room by PIN; resolves with the room's bootstrap config. */
+  async join(pin: string): Promise<RelayRoomConfig> {
+    await this.open();
+    return new Promise<RelayRoomConfig>((resolve, reject) => {
+      this.pendingGuest = { resolve, reject };
+      this.socket?.send(JSON.stringify({ t: "guest", pin }));
+      setTimeout(() => {
+        if (this.pendingGuest) {
+          this.pendingGuest = null;
+          reject(new Error("No response from the relay for that PIN"));
+        }
+      }, 10_000);
+    });
   }
 
   connect(_peerId: string, _signaling?: SignalingData): Promise<void> {
@@ -133,9 +179,26 @@ export class WebSocketTransport extends BaseTransport {
 
   private handleControl(text: string): void {
     try {
-      const msg = JSON.parse(text) as { t?: string; id?: string };
+      const msg = JSON.parse(text) as {
+        t?: string;
+        id?: string;
+        config?: RelayRoomConfig;
+        message?: string;
+      };
       if (msg.t === "welcome" && msg.id) {
         this.selfId = msg.id;
+      } else if (msg.t === "hosted") {
+        this.pendingHost?.resolve();
+        this.pendingHost = null;
+      } else if (msg.t === "config" && msg.config) {
+        this.pendingGuest?.resolve(msg.config);
+        this.pendingGuest = null;
+      } else if (msg.t === "error") {
+        const error = new Error(msg.message ?? "Relay error");
+        this.pendingHost?.reject(error);
+        this.pendingGuest?.reject(error);
+        this.pendingHost = null;
+        this.pendingGuest = null;
       } else if (msg.t === "join" && msg.id) {
         this.peers.add(msg.id);
         this.emitJoin(msg.id);

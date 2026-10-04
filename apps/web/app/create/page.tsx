@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
-import { createSession } from "@/lib/session";
+import { createRelaySession, createSession } from "@/lib/session";
 import { cx } from "@/lib/utils";
 
 type Mode = "webrtc" | "relay";
@@ -16,15 +16,24 @@ export default function CreatePage() {
   const [relayUrl, setRelayUrl] = useState("ws://192.168.1.10:8787");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [isHttps, setIsHttps] = useState(false);
+
+  useEffect(() => {
+    setIsHttps(typeof window !== "undefined" && window.location.protocol === "https:");
+  }, []);
 
   async function start() {
     setError(null);
     setBusy(true);
     try {
-      if (mode === "relay" && !/^wss?:\/\//.test(relayUrl.trim())) {
-        throw new Error("Relay URL must start with ws:// or wss://");
+      if (mode === "relay") {
+        if (!/^wss?:\/\//.test(relayUrl.trim())) {
+          throw new Error("Relay URL must start with ws:// or wss://");
+        }
+        await createRelaySession(name, relayUrl.trim());
+      } else {
+        await createSession(name);
       }
-      await createSession(name, mode === "relay" ? { relayUrl: relayUrl.trim() } : {});
       router.push("/chat");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create the session");
@@ -89,15 +98,15 @@ export default function CreatePage() {
               mode === "relay" ? "border-tg-blue bg-tg-blue/15" : "border-white/10 hover:bg-white/5",
             )}
           >
-            <span className="block text-sm font-semibold">Relay link</span>
-            <span className="gw-muted">Share a link. Needs a relay on your LAN.</span>
+            <span className="block text-sm font-semibold">Relay + PIN</span>
+            <span className="gw-muted">Join with a 6-digit PIN. No second QR.</span>
           </button>
         </div>
 
         {mode === "relay" && (
           <div className="mt-4">
             <label className="text-xs font-medium gw-muted" htmlFor="relay">
-              Relay WebSocket URL
+              Relay WebSocket URL (your device / LAN host)
             </label>
             <input
               id="relay"
@@ -107,9 +116,19 @@ export default function CreatePage() {
               className="mt-1 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2"
             />
             <p className="mt-2 text-xs gw-muted">
-              Run it with <code className="rounded bg-white/10 px-1">pnpm --filter @ghostwire/relay start</code>{" "}
-              on any LAN machine (or your hotspot host).
+              Run it on this machine or the hotspot host:{" "}
+              <code className="rounded bg-white/10 px-1">
+                pnpm --filter @ghostwire/relay start --port 8787 --serve apps/web/out
+              </code>
+              . Use your LAN IP (not localhost).
             </p>
+            {isHttps && (
+              <p className="mt-2 rounded-xl border border-tg-amber/40 bg-tg-amber/10 px-3 py-2 text-xs text-tg-amber">
+                You opened this over HTTPS, so the browser blocks <code>ws://</code> relay URLs
+                (mixed content). For relay + PIN, open the app over HTTP from the relay itself:
+                <code className="mx-1 rounded bg-white/10 px-1">http://&lt;lan-ip&gt;:8787</code>.
+              </p>
+            )}
           </div>
         )}
       </div>

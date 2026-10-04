@@ -58,6 +58,8 @@ export interface QRPayload {
   aek?: Uint8Array;
   /** When set, join via this WebSocket relay instead of WebRTC. */
   relay?: string;
+  /** Short room PIN on the relay (admin-as-server mode). */
+  pin?: string;
 }
 
 const bytes = z.instanceof(Uint8Array);
@@ -92,6 +94,7 @@ export const qrPayloadSchema = z.object({
   sig: signalingSchema.optional(),
   aek: bytes.optional(),
   relay: z.string().optional(),
+  pin: z.string().optional(),
 });
 
 /**
@@ -186,6 +189,7 @@ export function encodeQRPayload(payload: QRPayload): string {
   if (payload.sig) clean.sig = packSignaling(payload.sig);
   if (payload.aek) clean.aek = payload.aek;
   if (payload.relay) clean.relay = payload.relay;
+  if (payload.pin) clean.pin = payload.pin;
   return QR_PREFIX + toBase64Url(encode(clean));
 }
 

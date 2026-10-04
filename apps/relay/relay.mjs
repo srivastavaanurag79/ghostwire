@@ -1,15 +1,14 @@
 /**
  * GhostWire relay core (framework-free, importable for tests).
  *
- * Forwards opaque bytes between connected peers. It never has the session key
- * and cannot read message content or sender identity.
+ * This is the "admin device acts as the server" mode. The admin runs this on
+ * their machine (or a hotspot host) and opens a room with a short PIN. Peers
+ * join the room with the PIN and exchange OPAQUE BYTES through it. The relay
+ * forwards bytes and (optionally) hands a joiner the room's session bootstrap;
+ * it never sees message plaintext, which is end-to-end encrypted.
  *
- * Framing (client -> server):
- *   broadcast : 0x00 || payload
- *   directed  : 0x01 || targetLen(1) || targetId || payload
- * (server -> client):
- *   binary    : senderLen(1) || senderId || payload
- *   text      : JSON control frame (welcome / join / leave)
+ * Rooms are keyed by a short PIN. Optional path prefix (e.g. `/:pin`) is also
+ * supported so a plain `ws://host:port/123456` works.
  */
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
@@ -75,15 +74,11 @@ async function serveStatic(serveDir, req, res) {
   }
 }
 
-/**
- * Create and start a relay. Pass `port: 0` to let the OS choose a free port
- * (useful in tests), then read `relay.port`.
- */
 export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } = {}) {
   const httpServer = createServer((req, res) => {
     if (req.url === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, peers: wss.clients.size }));
+      res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
       return;
     }
     void serveStatic(serveDir, req, res);
@@ -91,50 +86,54 @@ export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } =
 
   const wss = new WebSocketServer({ server: httpServer });
   const nextId = nextIdFactory();
+  /** pin -> { config, sockets:Set<WebSocket> } */
+  const rooms = new Map();
 
-  const sendControl = (socket, message) => {
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  const sendTo = (socket, data, binary = false) => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(data, { binary });
+  };
+  const sendControl = (socket, message) => sendTo(socket, JSON.stringify(message));
+
+  const peersOf = (socket) => {
+    const room = rooms.get(socket.gwPin);
+    return room ? [...room.sockets].filter((s) => s !== socket) : [];
   };
 
   wss.on("connection", (socket) => {
-    const id = nextId();
-    socket.gwId = id;
+    socket.gwId = nextId();
+    socket.gwPin = null;
     socket.isAlive = true;
-
-    sendControl(socket, { t: "welcome", id });
-    for (const client of wss.clients) if (client !== socket && client.gwId) sendControl(client, { t: "join", id });
-    for (const client of wss.clients) {
-      if (client !== socket && client.gwId) sendControl(socket, { t: "join", id: client.gwId });
-    }
+    sendControl(socket, { t: "welcome", id: socket.gwId });
 
     socket.on("message", (raw, isBinary) => {
-      if (!isBinary) return;
+      if (!isBinary) {
+        handleControl(socket, raw.toString());
+        return;
+      }
+      const room = rooms.get(socket.gwPin);
+      if (!room) return;
       const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
       if (buf.length < 1) return;
       const kind = buf[0];
       let payload;
       let targetId = null;
-      if (kind === FRAME_BROADCAST) {
-        payload = buf.subarray(1);
-      } else if (kind === FRAME_DIRECTED) {
-        const targetLen = buf[1];
-        if (buf.length < 2 + targetLen) return;
-        targetId = buf.subarray(2, 2 + targetLen).toString("utf8");
-        payload = buf.subarray(2 + targetLen);
-      } else {
-        return;
-      }
+      if (kind === FRAME_BROADCAST) payload = buf.subarray(1);
+      else if (kind === FRAME_DIRECTED) {
+        const len = buf[1];
+        if (buf.length < 2 + len) return;
+        targetId = buf.subarray(2, 2 + len).toString("utf8");
+        payload = buf.subarray(2 + len);
+      } else return;
 
-      const sender = Buffer.from(id, "utf8");
+      const sender = Buffer.from(socket.gwId, "utf8");
       const header = Buffer.alloc(1 + sender.length);
       header[0] = sender.length;
       sender.copy(header, 1);
       const frame = Buffer.concat([header, payload]);
-
-      for (const client of wss.clients) {
-        if (client === socket) continue;
-        if (targetId && client.gwId !== targetId) continue;
-        if (client.readyState === WebSocket.OPEN) client.send(frame, { binary: true });
+      for (const peer of room.sockets) {
+        if (peer === socket) continue;
+        if (targetId && peer.gwId !== targetId) continue;
+        sendTo(peer, frame, true);
       }
     });
 
@@ -143,11 +142,47 @@ export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } =
     });
 
     socket.on("close", () => {
-      for (const client of wss.clients) {
-        if (client !== socket && client.gwId) sendControl(client, { t: "leave", id });
-      }
+      const room = rooms.get(socket.gwPin);
+      if (!room) return;
+      room.sockets.delete(socket);
+      for (const peer of room.sockets) sendControl(peer, { t: "leave", id: socket.gwId });
+      if (room.sockets.size === 0) rooms.delete(socket.gwPin);
     });
   });
+
+  function handleControl(socket, text) {
+    let msg;
+    try {
+      msg = JSON.parse(text);
+    } catch {
+      return;
+    }
+    const pin = typeof msg.pin === "string" ? msg.pin : null;
+
+    if (msg.t === "host") {
+      if (!pin) return sendControl(socket, { t: "error", message: "Missing PIN" });
+      const existing = rooms.get(pin) ?? { config: null, sockets: new Set() };
+      existing.config = msg.config ?? existing.config;
+      existing.sockets.add(socket);
+      socket.gwPin = pin;
+      rooms.set(pin, existing);
+      sendControl(socket, { t: "hosted", pin });
+      return;
+    }
+
+    if (msg.t === "guest") {
+      const room = pin ? rooms.get(pin) : null;
+      if (!room) return sendControl(socket, { t: "error", message: "No such session PIN" });
+      socket.gwPin = pin;
+      for (const peer of room.sockets) sendControl(peer, { t: "join", id: socket.gwId });
+      for (const peer of room.sockets) {
+        if (peer !== socket) sendControl(socket, { t: "join", id: peer.gwId });
+      }
+      room.sockets.add(socket);
+      sendControl(socket, { t: "config", config: room.config });
+      return;
+    }
+  }
 
   const heartbeat = setInterval(() => {
     for (const client of wss.clients) {
@@ -161,10 +196,7 @@ export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } =
   }, 30_000);
 
   const ready = new Promise((resolveReady) => {
-    httpServer.listen(port, host, () => {
-      wss._gwPort = httpServer.address()?.port;
-      resolveReady(wss._gwPort);
-    });
+    httpServer.listen(port, host, () => resolveReady(httpServer.address()?.port ?? port));
   });
 
   return {
@@ -173,6 +205,9 @@ export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } =
     ready,
     get port() {
       return httpServer.address()?.port ?? port;
+    },
+    get rooms() {
+      return rooms.size;
     },
     async close() {
       clearInterval(heartbeat);

@@ -40,7 +40,12 @@ export function QRScanner({
     async function start() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ focusMode: "continuous" }],
+          } as unknown as MediaTrackConstraints,
           audio: false,
         });
         if (cancelled) {

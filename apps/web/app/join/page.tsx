@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { QRCanvas } from "@/components/QRCanvas";
 import { QRScanner } from "@/components/QRScanner";
-import { decodeInviteText, joinFromInvite } from "@/lib/session";
+import { decodeInviteText, joinFromInvite, joinWithPin } from "@/lib/session";
 import { useUi } from "@/lib/store";
 import { ROLE_META } from "@/lib/utils";
 import type { Role } from "@ghostwire/protocol";
@@ -21,6 +21,16 @@ export default function JoinPage() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [answerLink, setAnswerLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [qrBig, setQrBig] = useState(false);
+  const [pinMode, setPinMode] = useState(false);
+  const [relayInput, setRelayInput] = useState("");
+  const [pinInput, setPinInput] = useState("");
+  const [working, setWorking] = useState(false);
+  const [isHttps, setIsHttps] = useState(false);
+
+  useEffect(() => {
+    setIsHttps(typeof window !== "undefined" && window.location.protocol === "https:");
+  }, []);
   const [invitedRole, setInvitedRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -84,6 +94,19 @@ export default function JoinPage() {
     setScanning(true);
   }
 
+  async function startPinJoin() {
+    setError(null);
+    setWorking(true);
+    try {
+      await joinWithPin(relayInput, pinInput, name);
+      setStep("waiting");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not join with that PIN");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-6 py-10">
       <Link href="/" className="flex items-center gap-2 text-sm gw-muted hover:opacity-80">
@@ -122,12 +145,77 @@ export default function JoinPage() {
               <p className="mt-3 text-xs text-tg-green">Invite link detected — ready to join.</p>
             )}
           </div>
-          <button
-            onClick={continueWithName}
-            className="rounded-2xl bg-tg-blue px-6 py-4 text-base font-semibold text-white transition hover:bg-tg-blueDark"
-          >
-            {linkInvite.current ? "Join session" : "Scan invite QR"}
-          </button>
+
+          {!pinMode && (
+            <>
+              <button
+                onClick={continueWithName}
+                className="rounded-2xl bg-tg-blue px-6 py-4 text-base font-semibold text-white transition hover:bg-tg-blueDark"
+              >
+                {linkInvite.current ? "Join session" : "Scan invite QR"}
+              </button>
+              {!linkInvite.current && (
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setPinMode(true);
+                  }}
+                  className="rounded-2xl border gw-border px-6 py-3 text-sm font-medium gw-muted hover:opacity-80"
+                >
+                  Join with a PIN instead
+                </button>
+              )}
+            </>
+          )}
+
+          {pinMode && (
+            <div className="flex flex-col gap-3 rounded-2xl border gw-border gw-panel p-5">
+              <div>
+                <label className="text-sm font-medium" htmlFor="relay-url">
+                  Relay URL
+                </label>
+                <input
+                  id="relay-url"
+                  value={relayInput}
+                  onChange={(e) => setRelayInput(e.target.value)}
+                  placeholder="ws://192.168.1.10:8787"
+                  className="mt-2 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium" htmlFor="pin">
+                  Session PIN
+                </label>
+                <input
+                  id="pin"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  inputMode="numeric"
+                  placeholder="6-digit PIN"
+                  className="mt-2 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-center text-2xl tracking-[0.3em] outline-none ring-tg-blue/40 focus:ring-2"
+                />
+              </div>
+              <button
+                onClick={startPinJoin}
+                disabled={working || !pinInput || !relayInput}
+                className="mt-1 rounded-2xl bg-tg-blue px-6 py-4 text-base font-semibold text-white transition hover:bg-tg-blueDark disabled:opacity-50"
+              >
+                {working ? "Connecting…" : "Join session"}
+              </button>
+              {isHttps && relayInput.startsWith("ws://") && (
+                <p className="rounded-xl border border-tg-amber/40 bg-tg-amber/10 px-3 py-2 text-xs text-tg-amber">
+                  An HTTPS page cannot open a <code>ws://</code> relay. Open the app over HTTP from
+                  the relay (<code>http://&lt;lan-ip&gt;:8787</code>) instead.
+                </p>
+              )}
+              <button
+                onClick={() => setPinMode(false)}
+                className="text-xs gw-muted hover:opacity-80"
+              >
+                Back
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -154,7 +242,15 @@ export default function JoinPage() {
               </span>
             </p>
           </div>
-          <QRCanvas value={answer} size={280} />
+          <QRCanvas value={answer} size={320} />
+          <div className="flex w-full gap-2">
+            <button
+              onClick={() => setQrBig(true)}
+              className="flex-1 rounded-xl border gw-border px-4 py-3 text-sm font-medium hover:opacity-80"
+            >
+              Show fullscreen QR
+            </button>
+          </div>
           {answerLink && (
             <div className="w-full rounded-2xl border gw-border gw-panel p-3">
               <p className="text-xs gw-muted">
@@ -170,10 +266,20 @@ export default function JoinPage() {
               </button>
             </div>
           )}
-          <p className="flex items-center gap-2 text-sm gw-muted">
+          <p className="flex items-center gap-2 text-center text-sm gw-muted">
             <span className="h-2 w-2 animate-pulse rounded-full bg-tg-amber" />
-            Waiting for the host to connect and approve…
+            Keep this page open in the foreground until the host connects.
           </p>
+        </div>
+      )}
+
+      {qrBig && answer && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black p-4"
+          onClick={() => setQrBig(false)}
+        >
+          <QRCanvas value={answer} size={Math.min(640, Math.round((typeof window !== "undefined" ? window.innerWidth : 360) * 0.92))} />
+          <p className="text-sm text-white/70">Tap anywhere to close</p>
         </div>
       )}
 

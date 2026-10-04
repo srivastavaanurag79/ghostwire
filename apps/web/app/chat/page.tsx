@@ -48,6 +48,7 @@ export default function ChatPage() {
   const [inviteQR, setInviteQR] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [relayLink, setRelayLink] = useState<string | null>(null);
+  const [relayPin, setRelayPin] = useState<string | null>(null);
   const [answerScanning, setAnswerScanning] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -71,8 +72,9 @@ export default function ChatPage() {
     setInviteError(null);
     try {
       if (transportKind === "relay") {
-        const { link } = hostCreateRelayInvite(inviteRole);
+        const { link, pin } = hostCreateRelayInvite(inviteRole);
         setRelayLink(link);
+        setRelayPin(pin);
         setInviteQR(null);
       } else {
         const { qr, link } = await hostCreateInvite(inviteRole);
@@ -325,6 +327,7 @@ export default function ChatPage() {
           qr={inviteQR}
           inviteLink={inviteLink}
           relayLink={relayLink}
+          relayPin={relayPin}
           error={inviteError}
           scanning={answerScanning}
           onGenerate={generateInvite}
@@ -344,6 +347,7 @@ export default function ChatPage() {
             setInviteQR(null);
             setInviteLink(null);
             setRelayLink(null);
+            setRelayPin(null);
             setAnswerScanning(false);
           }}
         />
@@ -427,6 +431,7 @@ function InviteModal({
   qr,
   inviteLink,
   relayLink,
+  relayPin,
   error,
   scanning,
   onGenerate,
@@ -439,6 +444,7 @@ function InviteModal({
   qr: string | null;
   inviteLink: string | null;
   relayLink: string | null;
+  relayPin: string | null;
   error: string | null;
   scanning: boolean;
   onGenerate: () => void;
@@ -584,9 +590,20 @@ function InviteModal({
 
         {relayLink && (
           <div className="mt-3 flex flex-col items-center gap-3">
-            <QRCanvas value={relayLink} size={300} />
+            {relayPin && (
+              <div className="w-full rounded-2xl border border-tg-green/30 bg-tg-green/10 p-4 text-center">
+                <p className="text-xs uppercase tracking-wide text-tg-green">Session PIN</p>
+                <p className="mt-1 text-4xl font-bold tracking-[0.3em] text-white">{relayPin}</p>
+                <p className="mt-2 text-[11px] text-white/60">
+                  Others open the app → <span className="font-semibold">Join a session</span> →{" "}
+                  <span className="font-semibold">Join with a PIN</span>, or scan the QR below.
+                </p>
+              </div>
+            )}
+            <QRCanvas value={relayLink} size={260} />
             <p className="text-center text-xs text-white/60">
-              Share this link. Anyone on your network can open it and request to join.
+              One scan joins the session — no second QR, no approval round-trip needed for a
+              listener.
             </p>
             <input
               readOnly
@@ -600,7 +617,7 @@ function InviteModal({
               }}
               className="w-full rounded-2xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white hover:bg-tg-blueDark"
             >
-              {copied ? "Copied!" : "Copy link"}
+              {copied ? "Copied!" : "Copy invite link"}
             </button>
             <button
               onClick={onClose}
