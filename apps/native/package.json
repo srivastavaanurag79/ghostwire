@@ -25,7 +25,9 @@
     "react-native-tcp-socket": "^6.0.6"
   },
   "optionalDependencies": {
-    "react-native-ble-plx": "^3.2.0"
+    "react-native-ble-peripheral": "^2.0.0",
+    "react-native-ble-plx": "^3.2.0",
+    "react-native-tcp-socket": "^6.0.6"
   },
   "devDependencies": {
     "@types/react": "~18.2.79",

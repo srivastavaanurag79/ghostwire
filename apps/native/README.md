@@ -16,7 +16,8 @@ crypto, roles and mesh packages as the web app.
 | BLE GATT central (react-native-ble-plx: scan/connect/notify/write) | ✅ implemented |
 | Camera QR: invite render + scan | ✅ implemented |
 | On-phone relay (`startLocalRelay`) + WebSocket codec | ✅ implemented |
-| BLE advertising/peripheral half (dual-role mesh) | 🚧 needs a peripheral module |
+| BLE advertising/peripheral half + dual-role adapter | ✅ implemented |
+| BLE dual-role mesh on real radios | 🚧 needs a dev build + `react-native-ble-peripheral` |
 
 ## Run it
 

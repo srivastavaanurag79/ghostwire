@@ -27,7 +27,8 @@ import type {
 } from "@ghostwire/protocol";
 import { WebSocketTransport, type Transport } from "@ghostwire/transport";
 import { decodeQRPayload, encodeQRPayload, type QRPayload } from "@ghostwire/qr";
-import { BlePlxAdapter, BleTransport } from "./transports/ble";
+import { BleTransport } from "./transports/ble";
+import { createDualRoleAdapter } from "./transports/ble-peripheral";
 import { startLocalRelay, type LocalRelayHandle } from "./server/local-relay";
 
 export interface NativeState {
@@ -352,7 +353,7 @@ export class NativeSession {
       issuerPubkey: keyPair.publicKey,
     });
 
-    const transport = new BleTransport(new BlePlxAdapter());
+    const transport = new BleTransport(createDualRoleAdapter());
     await transport.start();
 
     const runtime: Runtime = {
@@ -427,7 +428,7 @@ export class NativeSession {
       issuerPubkey: keyPair.publicKey,
     });
 
-    const transport = new BleTransport(new BlePlxAdapter());
+    const transport = new BleTransport(createDualRoleAdapter());
     await transport.start();
 
     const runtime: Runtime = {
