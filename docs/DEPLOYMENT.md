@@ -82,6 +82,43 @@ pnpm --filter @ghostwire/relay start -- --port 8787
 
 The relay only forwards opaque bytes. It never holds the session key and cannot read content.
 
+## Host the relay online (so PIN joins work from the Vercel PWA)
+
+An HTTPS page cannot open a `ws://` relay (mixed content). To let people **join by PIN** from your
+deployed HTTPS app, host the relay once and use its `wss://` URL.
+
+**Render (free tier, easiest):** the repo ships [`render.yaml`](../render.yaml). In Render →
+**New → Blueprint**, point it at this repo. Render builds `apps/relay` and gives you a URL like
+`wss://ghostwire-relay.onrender.com`.
+
+**Any Node host (Fly.io, Railway, a VPS):** build [`apps/relay/Dockerfile`](../apps/relay/Dockerfile)
+or run `node apps/relay/server.mjs --port $PORT --host 0.0.0.0`. Expose one port; TLS termination at
+the platform gives you `wss://`.
+
+Then, on Vercel, set an environment variable and redeploy:
+
+```
+NEXT_PUBLIC_RELAY_URL = wss://ghostwire-relay.onrender.com
+```
+
+Now the app prefills the relay URL, and joining is just: **Join a session → name → Join with a PIN →
+enter the 6-digit PIN**. No QR, no second handshake. The admin still sees a PIN and an optional QR
+in the invite panel.
+
+> Security note: for PIN joins the relay hands the session bootstrap (session key) to joiners, so
+> the relay must be **yours/trusted**. For untrusted relays, share the invite QR/link instead, which
+> carries the session material out-of-band and never exposes it to the relay.
+
+## Serve the app and relay offline (no internet at all)
+
+```bash
+pnpm build
+pnpm --filter @ghostwire/relay start -- --port 8787 --serve apps/web/out
+# open http://<lan-ip>:8787 on every device; install the PWA from there
+```
+
+Everything (app + signaling + messaging) then runs on the local network/hotspot with no internet.
+
 ## Native app
 
 The Expo app is the next milestone and is not required to use GhostWire today — the PWA is fully

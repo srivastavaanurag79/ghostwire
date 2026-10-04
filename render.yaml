@@ -1,0 +1,14 @@
+# Deploy the GhostWire relay as a WebSocket service on Render (free tier).
+# Render assigns a public https/wss URL automatically, which lets the HTTPS PWA
+# connect (no mixed-content blocking).
+services:
+  - type: web
+    name: ghostwire-relay
+    runtime: node
+    rootDir: apps/relay
+    buildCommand: npm install --omit=dev --no-package-lock
+    startCommand: node server.mjs --port $PORT --host 0.0.0.0
+    plan: free
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

@@ -9,11 +9,13 @@ import { cx } from "@/lib/utils";
 
 type Mode = "webrtc" | "relay";
 
+const DEFAULT_RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL ?? "";
+
 export default function CreatePage() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [mode, setMode] = useState<Mode>("webrtc");
-  const [relayUrl, setRelayUrl] = useState("ws://192.168.1.10:8787");
+  const [mode, setMode] = useState<Mode>(DEFAULT_RELAY_URL ? "relay" : "webrtc");
+  const [relayUrl, setRelayUrl] = useState(DEFAULT_RELAY_URL || "ws://192.168.1.10:8787");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isHttps, setIsHttps] = useState(false);

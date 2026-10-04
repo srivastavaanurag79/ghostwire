@@ -23,13 +23,17 @@ export default function JoinPage() {
   const [copied, setCopied] = useState(false);
   const [qrBig, setQrBig] = useState(false);
   const [pinMode, setPinMode] = useState(false);
-  const [relayInput, setRelayInput] = useState("");
+  const [relayInput, setRelayInput] = useState(process.env.NEXT_PUBLIC_RELAY_URL ?? "");
   const [pinInput, setPinInput] = useState("");
   const [working, setWorking] = useState(false);
   const [isHttps, setIsHttps] = useState(false);
 
   useEffect(() => {
     setIsHttps(typeof window !== "undefined" && window.location.protocol === "https:");
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("pin") === "1" && !window.location.hash) setPinMode(true);
+    }
   }, []);
   const [invitedRole, setInvitedRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);

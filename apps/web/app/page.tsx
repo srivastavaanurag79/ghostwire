@@ -61,6 +61,12 @@ export default function HomePage() {
             >
               Join with a QR
             </Link>
+            <Link
+              href="/join?pin=1"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 py-4 text-base font-semibold text-white transition hover:bg-white/10"
+            >
+              Join with a PIN
+            </Link>
           </div>
 
           <div className="mt-4">
