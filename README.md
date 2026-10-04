@@ -140,14 +140,16 @@ To test offline: load the app once, then turn off Wi-Fi and reload — the PWA s
 
 ### Deploy the PWA (Vercel)
 
-The web app is fully client-side and deploys to Vercel as an installable PWA:
+The web app is fully client-side and **statically exports** to `apps/web/out`, so it deploys as an
+installable PWA with no server runtime:
 
-1. Import the repo in Vercel and set **Root Directory** to `apps/web` (framework: Next.js).
-2. Build command: `pnpm --filter @ghostwire/web build` · Install: `pnpm install --frozen-lockfile`.
+1. Import the repo in Vercel. Leave **Root Directory** at the repository root and set **Framework
+   Preset** to `Other`.
+2. [`vercel.json`](vercel.json) already sets Install `pnpm install --frozen-lockfile`, Build
+   `pnpm exec turbo run build --filter=@ghostwire/web`, and Output `apps/web/out`.
 3. Deploy. Open the URL on a phone and choose **Add to Home Screen** / **Install**.
 
-No environment variables, no database, no secrets. Vercel only serves static files and never sees
-messages, keys, or participants. Full steps and self-hosting options are in
+No environment variables, no database, no secrets. Full steps and CLI instructions are in
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ### Run the optional relay (hotspot / admin-as-server)
@@ -259,8 +261,9 @@ scope. See [`SECURITY.md`](./SECURITY.md) to report a vulnerability.
 | `pnpm test` | Run unit tests (Vitest) across packages. |
 | `pnpm typecheck` | Type-check every workspace. |
 | `pnpm icons` | Regenerate PWA icons from the SVG logo. |
-| `pnpm --filter @ghostwire/web dev` | Run the web PWA. |
-| `pnpm --filter @ghostwire/web build` | Build the web PWA. |
+| `pnpm --filter @ghostwire/web dev` | Run the web PWA in dev. |
+| `pnpm --filter @ghostwire/web build` | Static-export the web PWA to `apps/web/out`. |
+| `pnpm --filter @ghostwire/web start` | Serve the exported `out/` locally. |
 | `pnpm --filter @ghostwire/relay start` | Run the WebSocket relay. |
 
 ## Roadmap

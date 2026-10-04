@@ -5,10 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/serve.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"no lint configured for @ghostwire/web\"",
-    "clean": "rimraf .next"
+    "clean": "rimraf .next out"
   },
   "dependencies": {
     "@ghostwire/crypto": "workspace:*",

@@ -47,3 +47,6 @@ apps/native/android/
 # Misc
 .cache/
 tmp/
+
+.vercel
+.env*.local
