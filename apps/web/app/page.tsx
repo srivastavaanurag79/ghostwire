@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { InstallButton } from "@/components/InstallButton";
 import { Logo } from "@/components/Logo";
 import { useUi } from "@/lib/store";
 
@@ -60,6 +61,10 @@ export default function HomePage() {
             >
               Join with a QR
             </Link>
+          </div>
+
+          <div className="mt-4">
+            <InstallButton variant="ghost" className="w-full sm:w-auto" />
           </div>
         </section>
 

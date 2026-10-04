@@ -1,7 +1,7 @@
 import { decode, encode } from "@msgpack/msgpack";
-import { fromBase64Url, toBase64Url } from "@ghostwire/crypto";
+import { decodeUtf8, encodeUtf8, fromBase64Url, toBase64Url } from "@ghostwire/crypto";
 import type { RoleToken, Role } from "@ghostwire/protocol";
-import LZString from "lz-string";
+import { deflateSync, inflateSync } from "fflate";
 import { z } from "zod";
 
 /**
@@ -88,11 +88,65 @@ export const qrPayloadSchema = z.object({
   relay: z.string().optional(),
 });
 
+/**
+ * Trim a session description to the bare minimum needed to establish a single
+ * WebRTC data channel. Browsers emit a lot of optional lines and many ICE
+ * candidates (including mDNS/`.local`, TCP and reflexive ones); keeping only
+ * host UDP candidates and the essential lines shrinks the QR dramatically.
+ *
+ * QR mode is intended for devices on the same local network, so host
+ * candidates are sufficient; use relay mode for NAT traversal.
+ */
+export function minifySdp(sdp: string): string {
+  const essential = [
+    "v=",
+    "o=",
+    "s=",
+    "t=",
+    "a=group:",
+    "a=ice-ufrag:",
+    "a=ice-pwd:",
+    "a=fingerprint:",
+    "a=setup:",
+    "a=mid:",
+    "a=sctp-port:",
+    "a=max-message-size:",
+    "m=application",
+    "c=",
+  ];
+  const candidates: string[] = [];
+  const output: string[] = [];
+  for (const line of sdp.split(/\r\n|\n/)) {
+    if (!line) continue;
+    if (line.startsWith("a=candidate:")) {
+      if (!/\btyp host\b/.test(line)) continue;
+      if (/\btcp\b/i.test(line)) continue;
+      candidates.push(line);
+      continue;
+    }
+    if (essential.some((prefix) => line.startsWith(prefix))) output.push(line);
+  }
+
+  const address = (line: string) => line.split(" ")[4] ?? "";
+  const score = (line: string) => {
+    const addr = address(line);
+    if (addr.includes(".") && !addr.includes(":")) return 1; // IPv4
+    if (addr.includes(":")) return 2; // IPv6
+    return 3; // hostname / mDNS
+  };
+  candidates.sort((a, b) => score(a) - score(b));
+
+  const chosen = candidates.slice(0, 2);
+  const mIndex = output.findIndex((line) => line.startsWith("m=application"));
+  output.splice(mIndex >= 0 ? mIndex + 1 : output.length, 0, ...chosen);
+  return `${output.join("\r\n")}\r\n`;
+}
+
 /** Compress an SDP into `sdpz` so the QR stays small enough to scan. */
 function packSignaling(sig: SignalingPayload): SignalingPayload {
   if (sig.sdp && !sig.sdpz) {
     const { sdp, ...rest } = sig;
-    return { ...rest, sdpz: LZString.compressToUint8Array(sdp) };
+    return { ...rest, sdpz: deflateSync(encodeUtf8(minifySdp(sdp))) };
   }
   return sig;
 }
@@ -101,7 +155,7 @@ function packSignaling(sig: SignalingPayload): SignalingPayload {
 function unpackSignaling(sig: SignalingPayload | undefined): SignalingPayload | undefined {
   if (!sig) return undefined;
   if (!sig.sdp && sig.sdpz) {
-    return { ...sig, sdp: LZString.decompressFromUint8Array(sig.sdpz) ?? "" };
+    return { ...sig, sdp: decodeUtf8(inflateSync(sig.sdpz)) };
   }
   return sig;
 }

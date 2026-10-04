@@ -7,7 +7,7 @@
  *    result for next time. This makes the PWA fully usable offline after the
  *    first visit without ever contacting a third party.
  */
-const VERSION = "ghostwire-v1";
+const VERSION = "ghostwire-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/logo.svg", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -30,6 +30,13 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  // Never cache the version stamp or the worker itself: they are how we detect
+  // and roll out new deployments.
+  if (url.pathname === "/version.json" || url.pathname === "/sw.js") {
+    event.respondWith(fetch(request, { cache: "no-store" }));
+    return;
+  }
 
   if (request.mode === "navigate") {
     event.respondWith(

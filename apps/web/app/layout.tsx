@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { ServiceWorker } from "@/components/ServiceWorker";
+import { PwaManager } from "@/components/PwaManager";
 
 export const metadata: Metadata = {
   title: "GhostWire",
@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body>
         {children}
-        <ServiceWorker />
+        <PwaManager />
       </body>
     </html>
   );

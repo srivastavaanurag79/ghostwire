@@ -18,10 +18,16 @@ export interface BrowserWebRTCTransportOptions {
   gatherTimeoutMs?: number;
 }
 
+/**
+ * Short link id. Kept small because it travels inside the QR bootstrap payload,
+ * where every byte affects QR density. 64 bits is plenty for a local session.
+ */
 function randomId(): string {
+  const bytes = new Uint8Array(8);
   const c = globalThis.crypto;
-  if (c && typeof c.randomUUID === "function") return c.randomUUID();
-  return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  if (c && typeof c.getRandomValues === "function") c.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**

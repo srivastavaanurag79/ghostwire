@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { InstallButton } from "@/components/InstallButton";
 import { Logo } from "@/components/Logo";
 import { panicWipe } from "@/lib/session";
 
@@ -34,6 +35,13 @@ export default function SettingsPage() {
           <h1 className="text-2xl font-semibold">Settings</h1>
           <p className="text-sm gw-muted">Privacy, appearance and the panic switch.</p>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <InstallButton variant="primary" className="w-full" />
+        <p className="text-xs gw-muted">
+          Install GhostWire as an app for a full-screen, offline-capable experience.
+        </p>
       </div>
 
       <div className="divide-y divide-[color:var(--gw-border)] rounded-2xl border gw-border gw-panel">

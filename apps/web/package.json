@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/stamp.mjs && next build",
     "start": "node scripts/serve.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"no lint configured for @ghostwire/web\"",

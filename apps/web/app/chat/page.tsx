@@ -501,7 +501,7 @@ function InviteModal({
 
         {qr && (
           <div className="mt-4 flex flex-col items-center gap-3">
-            <QRCanvas value={qr} size={big ? 460 : 300} />
+            <QRCanvas value={qr} size={big ? 520 : 340} />
             <button
               onClick={() => setBig((b) => !b)}
               className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium hover:bg-white/5"

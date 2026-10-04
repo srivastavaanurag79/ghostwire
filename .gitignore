@@ -48,5 +48,8 @@ apps/native/android/
 .cache/
 tmp/
 
+# Generated at build time
+apps/web/public/version.json
+
 .vercel
 .env*.local
