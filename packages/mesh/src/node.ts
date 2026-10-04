@@ -66,6 +66,7 @@ export class MeshNode {
   private readonly seen: SeenCache;
   private readonly registry = new PeerRegistry();
   private readonly delegations = new Map<string, DelegationCert>();
+  private readonly revoked = new Set<string>();
   private readonly keyring: SessionKeyring;
   private unsubscribers: Array<() => void> = [];
   private running = false;
@@ -82,6 +83,20 @@ export class MeshNode {
 
   get identity(): MeshIdentity {
     return this.options.identity;
+  }
+
+  /** Update the local identity in place (e.g. after a join_accept token). */
+  updateIdentity(patch: Partial<MeshIdentity>): void {
+    Object.assign(this.options.identity, patch);
+  }
+
+  /** Add public keys to the local revocation list; their traffic is dropped. */
+  revoke(pubkeys: Uint8Array[]): void {
+    for (const key of pubkeys) this.revoked.add(encodeKey(key));
+  }
+
+  isRevoked(pubkey: Uint8Array): boolean {
+    return this.revoked.has(encodeKey(pubkey));
   }
 
   start(): void {
@@ -112,6 +127,7 @@ export class MeshNode {
     this.seen.clear();
     this.registry.clear();
     this.delegations.clear();
+    this.revoked.clear();
     this.keyring.wipe();
   }
 
@@ -181,11 +197,21 @@ export class MeshNode {
       return this.drop("token/pubkey mismatch", envelope);
     }
 
-    const tokenResult = verifyRoleToken(inner.sender.token, this.trustContext());
-    if (!tokenResult.ok) return this.drop(`token rejected: ${tokenResult.reason}`, envelope);
+    if (this.isRevoked(inner.sender.pubkey)) {
+      return this.drop("sender revoked", envelope);
+    }
 
-    if (!isActionAllowed(inner.sender.role, inner.type)) {
-      return this.drop(`role ${inner.sender.role} cannot send ${inner.type}`, envelope);
+    // A join_request is the one message sent before a real token exists. It is
+    // already group-authenticated (the sender knows the session key) and
+    // self-signed, so we accept it without role verification. The admin replies
+    // with a properly signed token. Every other message must carry a valid token.
+    if (inner.type !== "join_request") {
+      const tokenResult = verifyRoleToken(inner.sender.token, this.trustContext());
+      if (!tokenResult.ok) return this.drop(`token rejected: ${tokenResult.reason}`, envelope);
+
+      if (!isActionAllowed(inner.sender.role, inner.type)) {
+        return this.drop(`role ${inner.sender.role} cannot send ${inner.type}`, envelope);
+      }
     }
 
     const isSelf = timingSafeEqual(inner.sender.pubkey, this.options.identity.publicKey);

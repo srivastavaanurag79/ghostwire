@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gw-bg: #ffffff;
+  --gw-panel: #ffffff;
+  --gw-panel-2: #f4f6f8;
+  --gw-text: #17212b;
+  --gw-muted: #708499;
+  --gw-border: #e6ebf0;
+  --gw-in: #ffffff;
+  --gw-out: #effdde;
+  --gw-accent: #2aabee;
+}
+
+.dark {
+  --gw-bg: #0e1621;
+  --gw-panel: #17212b;
+  --gw-panel-2: #0e1621;
+  --gw-text: #f5f5f5;
+  --gw-muted: #7f91a4;
+  --gw-border: #24313f;
+  --gw-in: #182533;
+  --gw-out: #2b5278;
+  --gw-accent: #2aabee;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--gw-bg);
+  color: var(--gw-text);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+.gw-panel {
+  background: var(--gw-panel);
+}
+.gw-panel-2 {
+  background: var(--gw-panel-2);
+}
+.gw-border {
+  border-color: var(--gw-border);
+}
+.gw-muted {
+  color: var(--gw-muted);
+}
+.gw-in {
+  background: var(--gw-in);
+}
+.gw-out {
+  background: var(--gw-out);
+}
+
+.gw-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.gw-scroll::-webkit-scrollbar-thumb {
+  background: rgba(127, 145, 164, 0.35);
+  border-radius: 8px;
+}
+
+/* subtle telegram-like dotted chat backdrop */
+.gw-chat-bg {
+  background-color: var(--gw-panel-2);
+  background-image: radial-gradient(rgba(127, 145, 164, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.gw-bubble-in::after,
+.gw-bubble-out::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 12px;
+  height: 16px;
+}
+.gw-bubble-in {
+  position: relative;
+  border-radius: 12px 12px 12px 2px;
+}
+.gw-bubble-out {
+  position: relative;
+  border-radius: 12px 12px 2px 12px;
+}

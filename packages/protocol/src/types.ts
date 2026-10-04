@@ -140,6 +140,8 @@ export interface JoinRequestBody {
 
 export interface JoinAcceptBody {
   token: RoleToken;
+  /** Present when the approved role is moderator, to delegate issuing rights. */
+  delegation?: DelegationCert;
 }
 
 export interface JoinRejectBody {
