@@ -20,8 +20,9 @@ export default function App() {
   const [name, setName] = useState("");
   const [relay, setRelay] = useState(DEFAULT_RELAY);
   const [pin, setPin] = useState("");
-  const [mode, setMode] = useState<"home" | "create" | "join">("home");
+  const [mode, setMode] = useState<"home" | "create" | "join" | "ble" | "blejoin">("home");
   const [text, setText] = useState("");
+  const [blePayload, setBlePayload] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -47,7 +48,8 @@ export default function App() {
           <View>
             <Text style={styles.title}>GhostWire</Text>
             <Text style={styles.subtitle}>
-              {state.role} · {state.peers.length + 1} connected
+              {state.transport === "ble" ? "Bluetooth mesh" : state.role} ·{" "}
+              {state.peers.length + 1} connected
               {state.isHost && state.pin ? ` · PIN ${state.pin}` : ""}
             </Text>
           </View>
@@ -55,6 +57,19 @@ export default function App() {
             <Text style={styles.dangerText}>Wipe</Text>
           </TouchableOpacity>
         </View>
+
+        {state.transport === "ble" && state.bleQr && (
+          <View style={styles.bleBox}>
+            <Text style={styles.bleTitle}>Bluetooth invite (show as QR)</Text>
+            <Text selectable style={styles.blePayload}>
+              {state.bleQr}
+            </Text>
+            <Text style={styles.bleHint}>
+              One QR only — BLE needs no answer handshake. Camera rendering is coming; for now share
+              this text with a nearby device.
+            </Text>
+          </View>
+        )}
 
         {state.isHost && state.joinRequests.length > 0 && (
           <View style={styles.requests}>
@@ -132,14 +147,21 @@ export default function App() {
         {mode === "home" && (
           <>
             <TouchableOpacity style={styles.primary} onPress={() => setMode("create")}>
-              <Text style={styles.primaryText}>Create a session (be the host)</Text>
+              <Text style={styles.primaryText}>Create a session (relay + PIN)</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondary} onPress={() => setMode("join")}>
               <Text style={styles.secondaryText}>Join with a PIN</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.secondary} onPress={() => setMode("ble")}>
+              <Text style={styles.secondaryText}>Start Bluetooth mesh (no internet)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondary} onPress={() => setMode("blejoin")}>
+              <Text style={styles.secondaryText}>Join Bluetooth mesh (paste invite)</Text>
+            </TouchableOpacity>
             <Text style={styles.note}>
-              A relay is the shared meeting point a PIN join needs. Run it on a computer or host it
-              once. The Bluetooth mesh transport (no relay, no hotspot) is the next milestone.
+              Relay + PIN needs a meeting point (a relay on a computer or hosted). The Bluetooth mesh
+              needs no internet, no hotspot and no relay — one QR to join. BLE is in progress and
+              needs a development build.
             </Text>
           </>
         )}
@@ -155,15 +177,19 @@ export default function App() {
               placeholderTextColor="#7f91a4"
             />
 
-            <Text style={styles.label}>Relay URL</Text>
-            <TextInput
-              style={styles.input}
-              value={relay}
-              onChangeText={setRelay}
-              autoCapitalize="none"
-              placeholder="ws://192.168.1.10:8787"
-              placeholderTextColor="#7f91a4"
-            />
+            {(mode === "create" || mode === "join") && (
+              <>
+                <Text style={styles.label}>Relay URL</Text>
+                <TextInput
+                  style={styles.input}
+                  value={relay}
+                  onChangeText={setRelay}
+                  autoCapitalize="none"
+                  placeholder="ws://192.168.1.10:8787"
+                  placeholderTextColor="#7f91a4"
+                />
+              </>
+            )}
 
             {mode === "join" && (
               <>
@@ -179,19 +205,43 @@ export default function App() {
               </>
             )}
 
+            {mode === "blejoin" && (
+              <>
+                <Text style={styles.label}>Invite payload</Text>
+                <TextInput
+                  style={[styles.input, styles.multiline]}
+                  value={blePayload}
+                  onChangeText={setBlePayload}
+                  multiline
+                  autoCapitalize="none"
+                  placeholder="Paste the GW1:… invite from the host"
+                  placeholderTextColor="#7f91a4"
+                />
+              </>
+            )}
+
             <TouchableOpacity
               style={[styles.primary, busy && styles.disabled]}
               disabled={busy}
               onPress={() =>
-                run(() =>
-                  mode === "create"
-                    ? session.createRelay(name, relay.trim())
-                    : session.joinRelay(name, relay.trim(), pin.trim()),
-                )
+                run(() => {
+                  if (mode === "create") return session.createRelay(name, relay.trim());
+                  if (mode === "join") return session.joinRelay(name, relay.trim(), pin.trim());
+                  if (mode === "ble") return session.createBle(name).then(() => undefined);
+                  return session.joinBle(blePayload.trim(), name);
+                })
               }
             >
               <Text style={styles.primaryText}>
-                {busy ? "Connecting…" : mode === "create" ? "Open session" : "Join session"}
+                {busy
+                  ? "Connecting…"
+                  : mode === "create"
+                    ? "Open session"
+                    : mode === "join"
+                      ? "Join session"
+                      : mode === "ble"
+                        ? "Start mesh"
+                        : "Join mesh"}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondary} onPress={() => setMode("home")}>
@@ -221,6 +271,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   pinInput: { textAlign: "center", fontSize: 24, letterSpacing: 6 },
+  multiline: { minHeight: 80, textAlignVertical: "top" },
+  bleBox: {
+    backgroundColor: "#132a1f",
+    borderColor: "#2f6b4a",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    margin: 12,
+    gap: 6,
+  },
+  bleTitle: { color: "#7fe0a8", fontSize: 13, fontWeight: "700" },
+  blePayload: { color: "#cfe9dc", fontSize: 11 },
+  bleHint: { color: "#7fae95", fontSize: 11 },
   primary: { backgroundColor: "#2aabee", borderRadius: 14, paddingVertical: 16, alignItems: "center", marginTop: 8 },
   primaryText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   secondary: { borderColor: "#24313f", borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: "center" },

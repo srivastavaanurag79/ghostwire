@@ -26,6 +26,8 @@ import type {
   TokenRevokeBody,
 } from "@ghostwire/protocol";
 import { WebSocketTransport, type Transport } from "@ghostwire/transport";
+import { decodeQRPayload, encodeQRPayload, type QRPayload } from "@ghostwire/qr";
+import { BlePlxAdapter, BleTransport } from "./transports/ble";
 
 export interface NativeState {
   screen: "home" | "active";
@@ -39,6 +41,7 @@ export interface NativeState {
   joinRequests: Array<{ peerId: string; name: string; pubkey: Uint8Array; requestedRole: Role }>;
   notice: string | null;
   transport: "relay" | "ble" | null;
+  bleQr: string | null;
 }
 
 interface Runtime {
@@ -70,6 +73,7 @@ const initialState: NativeState = {
   joinRequests: [],
   notice: null,
   transport: null,
+  bleQr: null,
 };
 
 function pinCode(): string {
@@ -306,6 +310,152 @@ export class NativeSession {
 
   joinRelay = (name: string, relayUrl: string, pin: string): Promise<void> =>
     this.openRelaySession(name, relayUrl, { host: false, pin });
+
+  /**
+   * Start a Bluetooth mesh session (no internet, no hotspot, no relay). Returns
+   * the invite payload to show as a QR — a single QR is all that is needed
+   * because BLE has no offer/answer handshake.
+   */
+  createBle = async (name: string): Promise<string> => {
+    this.teardown();
+    const sessionId = randomUUID();
+    const sessionKey = randomBytes(32);
+    const keyPair = generateSigningKeyPair();
+    const sessionStart = Date.now();
+    const displayName = name.trim() || "Admin";
+    const token = issueRoleToken({
+      sessionId,
+      name: displayName,
+      subjectPubkey: keyPair.publicKey,
+      role: "admin",
+      issuerPrivateKey: keyPair.privateKey,
+      issuerPubkey: keyPair.publicKey,
+    });
+
+    const transport = new BleTransport(new BlePlxAdapter());
+    await transport.start();
+
+    const runtime: Runtime = {
+      isHost: true,
+      role: "admin",
+      sessionId,
+      sessionKey,
+      adminPubKey: keyPair.publicKey,
+      sessionStart,
+      name: displayName,
+      keyPair,
+      token,
+      delegations: [],
+      adminPrivateKey: keyPair.privateKey,
+      transport,
+      mesh: null as unknown as MeshNode,
+      pendingJoinPeers: new Map(),
+    };
+    runtime.mesh = new MeshNode({
+      transport,
+      sessionId,
+      sessionKey,
+      sessionStart,
+      adminPubKey: keyPair.publicKey,
+      identity: this.identity({ name: displayName, role: "admin", token, keyPair }),
+      onMessage: this.onMessage,
+      onPeerJoin: () => this.set({ peers: runtime.mesh.peers.list() }),
+      onPeerLeave: () => this.set({ peers: runtime.mesh.peers.list() }),
+    });
+    runtime.mesh.start();
+    this.runtime = runtime;
+
+    const payload: QRPayload = {
+      v: 1,
+      sid: sessionId,
+      role: "listener",
+      sk: sessionKey,
+      apk: keyPair.publicKey,
+      st: sessionStart,
+    };
+    const bleQr = encodeQRPayload(payload);
+    this.set({
+      screen: "active",
+      role: "admin",
+      sessionId,
+      name: displayName,
+      isHost: true,
+      pin: null,
+      transport: "ble",
+      bleQr,
+      peers: [],
+      messages: [],
+      joinRequests: [],
+      notice: null,
+    });
+    this.system("Bluetooth session started. Show the QR so peers can join.");
+    return bleQr;
+  };
+
+  /** Join a mesh from a scanned/imported invite payload. */
+  joinBle = async (payloadText: string, name: string): Promise<void> => {
+    this.teardown();
+    const payload = decodeQRPayload(payloadText.trim());
+    const displayName = name.trim() || "Guest";
+    const keyPair = generateSigningKeyPair();
+    const token = issueRoleToken({
+      sessionId: payload.sid,
+      name: displayName,
+      subjectPubkey: keyPair.publicKey,
+      role: "listener",
+      issuerPrivateKey: keyPair.privateKey,
+      issuerPubkey: keyPair.publicKey,
+    });
+
+    const transport = new BleTransport(new BlePlxAdapter());
+    await transport.start();
+
+    const runtime: Runtime = {
+      isHost: false,
+      role: "listener",
+      sessionId: payload.sid,
+      sessionKey: payload.sk,
+      adminPubKey: payload.apk,
+      sessionStart: payload.st,
+      name: displayName,
+      keyPair,
+      token,
+      delegations: [],
+      transport,
+      mesh: null as unknown as MeshNode,
+      pendingJoinPeers: new Map(),
+    };
+    runtime.mesh = new MeshNode({
+      transport,
+      sessionId: payload.sid,
+      sessionKey: payload.sk,
+      sessionStart: payload.st,
+      adminPubKey: payload.apk,
+      identity: this.identity({ name: displayName, role: "listener", token, keyPair }),
+      onMessage: this.onMessage,
+      onPeerJoin: () => this.set({ peers: runtime.mesh.peers.list() }),
+      onPeerLeave: () => this.set({ peers: runtime.mesh.peers.list() }),
+    });
+    runtime.mesh.start();
+    this.runtime = runtime;
+
+    this.set({
+      screen: "active",
+      role: "listener",
+      sessionId: payload.sid,
+      name: displayName,
+      isHost: false,
+      pin: null,
+      transport: "ble",
+      bleQr: null,
+      peers: [],
+      messages: [],
+      joinRequests: [],
+      notice: null,
+    });
+    this.system("Joined the Bluetooth mesh. Waiting for approval…");
+    runtime.mesh.send("join_request", { name: displayName, pubkey: keyPair.publicKey });
+  };
 
   send = (text: string): void => {
     const rt = this.runtime;
