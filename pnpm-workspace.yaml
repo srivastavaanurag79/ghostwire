@@ -1,3 +1,7 @@
 packages:
-  - "apps/*"
+  - "apps/web"
+  - "apps/relay"
   - "packages/*"
+  # apps/native is a standalone Expo project (its own install) so the web
+  # deploy and CI stay lean. Run `pnpm build` first, then `cd apps/native && npm install`.
+  - "!apps/native"
