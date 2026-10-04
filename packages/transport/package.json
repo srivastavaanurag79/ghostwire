@@ -24,6 +24,9 @@
     }
   },
   "files": ["dist"],
+  "dependencies": {
+    "@ghostwire/crypto": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

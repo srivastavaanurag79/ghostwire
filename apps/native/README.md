@@ -15,8 +15,8 @@ crypto, roles and mesh packages as the web app.
 | BLE session create/join wired into the app | ✅ implemented |
 | BLE GATT central (react-native-ble-plx: scan/connect/notify/write) | ✅ implemented |
 | Camera QR: invite render + scan | ✅ implemented |
+| On-phone relay (`startLocalRelay`) + WebSocket codec | ✅ implemented |
 | BLE advertising/peripheral half (dual-role mesh) | 🚧 needs a peripheral module |
-| On-phone relay (`src/server/local-relay.ts`) | 🚧 interface + plan |
 
 ## Run it
 

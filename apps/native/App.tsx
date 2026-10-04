@@ -22,7 +22,9 @@ export default function App() {
   const [name, setName] = useState("");
   const [relay, setRelay] = useState(DEFAULT_RELAY);
   const [pin, setPin] = useState("");
-  const [mode, setMode] = useState<"home" | "create" | "join" | "ble" | "blejoin">("home");
+  const [mode, setMode] = useState<"home" | "create" | "join" | "hostphone" | "ble" | "blejoin">(
+    "home",
+  );
   const [text, setText] = useState("");
   const [blePayload, setBlePayload] = useState("");
   const [scanning, setScanning] = useState(false);
@@ -149,6 +151,9 @@ export default function App() {
             <TouchableOpacity style={styles.primary} onPress={() => setMode("create")}>
               <Text style={styles.primaryText}>Create a session (relay + PIN)</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.secondary} onPress={() => setMode("hostphone")}>
+              <Text style={styles.secondaryText}>Host on this phone (no computer)</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.secondary} onPress={() => setMode("join")}>
               <Text style={styles.secondaryText}>Join with a PIN</Text>
             </TouchableOpacity>
@@ -230,6 +235,7 @@ export default function App() {
                 run(() => {
                   if (mode === "create") return session.createRelay(name, relay.trim());
                   if (mode === "join") return session.joinRelay(name, relay.trim(), pin.trim());
+                  if (mode === "hostphone") return session.hostOnPhone(name);
                   if (mode === "ble") return session.createBle(name).then(() => undefined);
                   return session.joinBle(blePayload.trim(), name);
                 })
@@ -240,11 +246,13 @@ export default function App() {
                   ? "Connecting…"
                   : mode === "create"
                     ? "Open session"
-                    : mode === "join"
-                      ? "Join session"
-                      : mode === "ble"
-                        ? "Start mesh"
-                        : "Join mesh"}
+                    : mode === "hostphone"
+                      ? "Start hosting"
+                      : mode === "join"
+                        ? "Join session"
+                        : mode === "ble"
+                          ? "Start mesh"
+                          : "Join mesh"}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondary} onPress={() => setMode("home")}>

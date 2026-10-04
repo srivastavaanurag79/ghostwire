@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./ws-frame";
 export { MemoryTransport } from "./memory";
 export { BrowserWebRTCTransport } from "./webrtc";
 export type { BrowserWebRTCTransportOptions } from "./webrtc";

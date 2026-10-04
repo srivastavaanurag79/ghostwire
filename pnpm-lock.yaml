@@ -232,6 +232,10 @@ importers:
         version: 2.1.9(@types/node@20.19.43)
 
   packages/transport:
+    dependencies:
+      '@ghostwire/crypto':
+        specifier: workspace:*
+        version: link:../crypto
     devDependencies:
       '@types/ws':
         specifier: ^8.5.12

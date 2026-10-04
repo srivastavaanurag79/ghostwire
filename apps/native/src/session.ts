@@ -28,6 +28,7 @@ import type {
 import { WebSocketTransport, type Transport } from "@ghostwire/transport";
 import { decodeQRPayload, encodeQRPayload, type QRPayload } from "@ghostwire/qr";
 import { BlePlxAdapter, BleTransport } from "./transports/ble";
+import { startLocalRelay, type LocalRelayHandle } from "./server/local-relay";
 
 export interface NativeState {
   screen: "home" | "active";
@@ -59,6 +60,7 @@ interface Runtime {
   transport: Transport;
   mesh: MeshNode;
   pendingJoinPeers: Map<string, { name: string; pubkey: Uint8Array; requestedRole: Role }>;
+  localRelay?: LocalRelayHandle;
 }
 
 const initialState: NativeState = {
@@ -312,6 +314,24 @@ export class NativeSession {
     this.openRelaySession(name, relayUrl, { host: false, pin });
 
   /**
+   * Host a session entirely on this phone: start the on-phone relay and connect
+   * to it over localhost. Others on the same Wi-Fi/hotspot join with the PIN.
+   */
+  hostOnPhone = async (name: string): Promise<void> => {
+    const relay = await startLocalRelay({ port: 8787 });
+    try {
+      await this.openRelaySession(name, `ws://127.0.0.1:${relay.port}`, { host: true });
+    } catch (e) {
+      await relay.close();
+      throw e;
+    }
+    if (this.runtime) this.runtime.localRelay = relay;
+    this.system(
+      `Hosting on this phone. Others on your network join with PIN ${this.state.pin}.`,
+    );
+  };
+
+  /**
    * Start a Bluetooth mesh session (no internet, no hotspot, no relay). Returns
    * the invite payload to show as a QR — a single QR is all that is needed
    * because BLE has no offer/answer handshake.
@@ -533,6 +553,7 @@ export class NativeSession {
     } catch {
       /* ignore */
     }
+    void rt.localRelay?.close();
     zeroize(rt.sessionKey, rt.keyPair.privateKey, rt.adminPrivateKey);
   }
 }
