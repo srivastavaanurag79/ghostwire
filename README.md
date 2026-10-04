@@ -12,6 +12,8 @@
 
 No servers · No accounts · No tracking · End-to-end encrypted · Works offline
 
+**[Live app → https://qrghostwire.vercel.app](https://qrghostwire.vercel.app)**
+
 </div>
 
 ---
@@ -119,6 +121,9 @@ Read the details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
 ## Quickstart
 
 Requirements: **Node.js ≥ 18.18** and **pnpm 9**.
+
+**Just want to try it?** Open the live app: **<https://qrghostwire.vercel.app>** and install it as a
+PWA (it works offline after the first load).
 
 ```bash
 git clone https://github.com/srivastavaanurag79/ghostwire.git
