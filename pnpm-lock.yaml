@@ -149,6 +149,9 @@ importers:
       vitest:
         specifier: ^2.1.2
         version: 2.1.9(@types/node@20.19.43)
+      ws:
+        specifier: ^8.18.0
+        version: 8.22.0
 
   packages/protocol:
     dependencies:
