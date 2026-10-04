@@ -13,12 +13,20 @@ enables camera QR scanning).
 3. Configure the project:
    - **Root Directory:** `apps/web`
    - **Framework Preset:** Next.js (auto-detected)
-   - **Build Command:** `pnpm --filter @ghostwire/web build`
+   - **Build Command:** `pnpm exec turbo run build --filter=@ghostwire/web`
    - **Install Command:** `pnpm install --frozen-lockfile`
-   - Node.js **20.x**
-   - Leave "Include source files outside of the Root Directory" enabled (Vercel does this for
-     monorepos automatically).
+   - **Node.js:** 20.x
+   - Leave "Include source files outside of the Root Directory in the Build Step" enabled
+     (Vercel enables this for pnpm/Turborepo workspaces).
 4. Deploy.
+
+> **Why the Turborepo build command?** The web app imports the workspace packages
+> (`@ghostwire/protocol`, etc.), which must be compiled first. `turbo run build --filter=@ghostwire/web`
+> builds those dependencies and then the web app, in the correct order.
+
+> **Production branch.** This repository's default branch is `master`. In
+> **Project Settings → Git → Production Branch**, set it to `master` (or rename the default branch to
+> `main` on GitHub) so pushes deploy to production.
 
 A ready-made [`apps/web/vercel.json`](../apps/web/vercel.json) already pins the framework, install
 and build commands.
