@@ -177,18 +177,25 @@ export default function JoinPage() {
 
           {pinMode && (
             <div className="flex flex-col gap-3 rounded-2xl border gw-border gw-panel p-5">
-              <div>
-                <label className="text-sm font-medium" htmlFor="relay-url">
-                  Relay URL
-                </label>
-                <input
-                  id="relay-url"
-                  value={relayInput}
-                  onChange={(e) => setRelayInput(e.target.value)}
-                  placeholder="ws://192.168.1.10:8787"
-                  className="mt-2 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2"
-                />
-              </div>
+              {!process.env.NEXT_PUBLIC_RELAY_URL && (
+                <div>
+                  <label className="text-sm font-medium" htmlFor="relay-url">
+                    Relay URL
+                  </label>
+                  <input
+                    id="relay-url"
+                    value={relayInput}
+                    onChange={(e) => setRelayInput(e.target.value)}
+                    placeholder="ws://192.168.1.10:8787"
+                    className="mt-2 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2"
+                  />
+                </div>
+              )}
+              {process.env.NEXT_PUBLIC_RELAY_URL && (
+                <p className="text-xs gw-muted">
+                  Relay: {process.env.NEXT_PUBLIC_RELAY_URL.replace(/^wss?:\/\//, "")}
+                </p>
+              )}
               <div>
                 <label className="text-sm font-medium" htmlFor="pin">
                   Session PIN

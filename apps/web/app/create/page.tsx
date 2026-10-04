@@ -113,28 +113,39 @@ export default function CreatePage() {
 
         {mode === "relay" && (
           <div className="mt-4">
-            <label className="text-xs font-medium gw-muted" htmlFor="relay">
-              Relay WebSocket URL (your device / LAN host)
-            </label>
-            <input
-              id="relay"
-              value={relayUrl}
-              onChange={(e) => setRelayUrl(e.target.value)}
-              placeholder="ws://192.168.1.10:8787"
-              className="mt-1 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2"
-            />
-            <p className="mt-2 text-xs gw-muted">
-              Run it on this machine or the hotspot host:{" "}
-              <code className="rounded bg-white/10 px-1">
-                pnpm --filter @ghostwire/relay start --port 8787 --serve apps/web/out
-              </code>
-              . Use your LAN IP (not localhost).
-            </p>
-            {isHttps && (
+            {DEFAULT_RELAY_URL ? (
+              <p className="rounded-xl border gw-border bg-white/5 px-4 py-3 text-xs gw-muted">
+                Relay: <span className="font-medium">{DEFAULT_RELAY_URL.replace(/^wss?:\/\//, "")}</span>{" "}
+                (configured). Phones join with just the PIN.
+              </p>
+            ) : (
+              <>
+                <label className="text-xs font-medium gw-muted" htmlFor="relay">
+                  Relay WebSocket URL
+                </label>
+                <input
+                  id="relay"
+                  value={relayUrl}
+                  onChange={(e) => setRelayUrl(e.target.value)}
+                  placeholder="ws://192.168.1.10:8787"
+                  className="mt-1 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2"
+                />
+                <p className="mt-2 text-xs gw-muted">
+                  A relay is a small meeting point that connects participants. It runs on a{" "}
+                  <span className="font-medium">computer</span> (not a phone), or it can be hosted
+                  once (see docs). On a computer/laptop:
+                </p>
+                <code className="mt-1 block rounded-lg bg-white/10 px-2 py-1 text-[11px]">
+                  pnpm --filter @ghostwire/relay start --port 8787
+                </code>
+              </>
+            )}
+            {isHttps && !DEFAULT_RELAY_URL && (
               <p className="mt-2 rounded-xl border border-tg-amber/40 bg-tg-amber/10 px-3 py-2 text-xs text-tg-amber">
-                You opened this over HTTPS, so the browser blocks <code>ws://</code> relay URLs
-                (mixed content). For relay + PIN, open the app over HTTP from the relay itself:
-                <code className="mx-1 rounded bg-white/10 px-1">http://&lt;lan-ip&gt;:8787</code>.
+                Over HTTPS the browser blocks <code>ws://</code> (mixed content). To use a relay from
+                this HTTPS site, host it with TLS (e.g. Render → gives <code>wss://</code>). For a
+                local relay, open the app over HTTP from it:{" "}
+                <code>http://&lt;lan-ip&gt;:8787</code>.
               </p>
             )}
           </div>
