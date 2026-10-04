@@ -19,6 +19,8 @@ export default function JoinPage() {
   const [step, setStep] = useState<Step>("name");
   const [name, setName] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
+  const [answerLink, setAnswerLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [invitedRole, setInvitedRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -42,6 +44,7 @@ export default function JoinPage() {
       const outcome = await joinFromInvite(text, displayName);
       if (outcome.mode === "webrtc") {
         setAnswer(outcome.answerQR);
+        setAnswerLink(outcome.answerLink);
         setStep("answer");
       } else {
         setStep("waiting");
@@ -143,7 +146,7 @@ export default function JoinPage() {
       {step === "answer" && answer && (
         <div className="flex flex-col items-center gap-4">
           <div className="rounded-2xl border gw-border gw-panel p-4 text-center">
-            <p className="text-sm font-medium">Show this answer QR to the host</p>
+            <p className="text-sm font-medium">Send this answer back to the host</p>
             <p className="mt-1 text-xs gw-muted">
               Requested role:{" "}
               <span className="font-medium">
@@ -151,10 +154,25 @@ export default function JoinPage() {
               </span>
             </p>
           </div>
-          <QRCanvas value={answer} />
+          <QRCanvas value={answer} size={280} />
+          {answerLink && (
+            <div className="w-full rounded-2xl border gw-border gw-panel p-3">
+              <p className="text-xs gw-muted">
+                No camera on the host? Send them this answer link instead:
+              </p>
+              <button
+                onClick={() => {
+                  void navigator.clipboard?.writeText(answerLink).then(() => setCopied(true));
+                }}
+                className="mt-2 w-full rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white hover:bg-tg-blueDark"
+              >
+                {copied ? "Answer link copied!" : "Copy answer link"}
+              </button>
+            </div>
+          )}
           <p className="flex items-center gap-2 text-sm gw-muted">
             <span className="h-2 w-2 animate-pulse rounded-full bg-tg-amber" />
-            Waiting for the host to scan and approve…
+            Waiting for the host to connect and approve…
           </p>
         </div>
       )}

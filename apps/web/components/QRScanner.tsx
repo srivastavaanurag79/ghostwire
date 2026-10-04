@@ -77,7 +77,7 @@ export function QRScanner({
           ctx.drawImage(video, 0, 0, w, h);
           const image = ctx.getImageData(0, 0, w, h);
           const code = jsQR(image.data, image.width, image.height, {
-            inversionAttempts: "dontInvert",
+            inversionAttempts: "attemptBoth",
           });
           if (code?.data) {
             onResult(code.data);

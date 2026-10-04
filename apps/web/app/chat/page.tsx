@@ -46,6 +46,7 @@ export default function ChatPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<Role>("listener");
   const [inviteQR, setInviteQR] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [relayLink, setRelayLink] = useState<string | null>(null);
   const [answerScanning, setAnswerScanning] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -74,8 +75,9 @@ export default function ChatPage() {
         setRelayLink(link);
         setInviteQR(null);
       } else {
-        const qr = await hostCreateInvite(inviteRole);
+        const { qr, link } = await hostCreateInvite(inviteRole);
         setInviteQR(qr);
+        setInviteLink(link);
         setAnswerScanning(true);
       }
     } catch (e) {
@@ -321,6 +323,7 @@ export default function ChatPage() {
           setRole={setInviteRole}
           transportKind={transportKind}
           qr={inviteQR}
+          inviteLink={inviteLink}
           relayLink={relayLink}
           error={inviteError}
           scanning={answerScanning}
@@ -330,14 +333,16 @@ export default function ChatPage() {
               await hostScanAnswer(t);
               setAnswerScanning(false);
               setInviteQR(null);
+              setInviteLink(null);
               setInviteOpen(false);
             } catch (e) {
-              setInviteError(e instanceof Error ? e.message : "Invalid answer QR");
+              setInviteError(e instanceof Error ? e.message : "Invalid answer code");
             }
           }}
           onClose={() => {
             setInviteOpen(false);
             setInviteQR(null);
+            setInviteLink(null);
             setRelayLink(null);
             setAnswerScanning(false);
           }}
@@ -420,6 +425,7 @@ function InviteModal({
   setRole,
   transportKind,
   qr,
+  inviteLink,
   relayLink,
   error,
   scanning,
@@ -431,6 +437,7 @@ function InviteModal({
   setRole: (role: Role) => void;
   transportKind: "webrtc" | "relay" | null;
   qr: string | null;
+  inviteLink: string | null;
   relayLink: string | null;
   error: string | null;
   scanning: boolean;
@@ -439,11 +446,19 @@ function InviteModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [big, setBig] = useState(false);
+  const [answerText, setAnswerText] = useState("");
+  const [scanningNow, setScanningNow] = useState(scanning);
   const started = Boolean(qr) || Boolean(relayLink);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#17212b] p-6">
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+      <div
+        className={cx(
+          "my-4 w-full rounded-3xl border border-white/10 bg-[#17212b] p-6",
+          big ? "max-w-2xl" : "max-w-md",
+        )}
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Invite someone</h2>
           <button onClick={onClose} className="rounded-lg px-2 py-1 text-white/50 hover:bg-white/10">
@@ -485,25 +500,76 @@ function InviteModal({
         )}
 
         {qr && (
-          <div className="mt-3 flex flex-col items-center gap-3">
-            <QRCanvas value={qr} size={230} />
-            <p className="text-center text-xs text-white/60">
-              Have the joiner scan this. Then scan their answer QR below.
-            </p>
-            {scanning ? (
-              <QRScanner
-                onResult={onScanAnswer}
-                active={scanning}
-                onError={(msg) => useUi.getState().setNotice(msg)}
-              />
-            ) : (
+          <div className="mt-4 flex flex-col items-center gap-3">
+            <QRCanvas value={qr} size={big ? 460 : 300} />
+            <button
+              onClick={() => setBig((b) => !b)}
+              className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium hover:bg-white/5"
+            >
+              {big ? "Shrink QR" : "Enlarge QR"}
+            </button>
+
+            <div className="w-full rounded-2xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs font-medium text-white/70">Option A — scan</p>
+              <p className="mt-1 text-[11px] text-white/50">
+                Have the joiner scan this QR. Then, on this device, either scan their answer QR or
+                paste their answer link below.
+              </p>
               <button
-                onClick={onGenerate}
-                className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium hover:bg-white/5"
+                onClick={() => setScanningNow((s) => !s)}
+                className="mt-2 w-full rounded-xl border border-white/15 px-3 py-2 text-xs font-medium hover:bg-white/5"
               >
-                Regenerate
+                {scanningNow ? "Stop camera" : "Scan the joiner's answer with this camera"}
               </button>
-            )}
+              {scanningNow && (
+                <div className="mt-2">
+                  <QRScanner
+                    onResult={onScanAnswer}
+                    active={scanningNow}
+                    onError={(msg) => useUi.getState().setNotice(msg)}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="w-full rounded-2xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs font-medium text-white/70">Option B — no camera</p>
+              <p className="mt-1 text-[11px] text-white/50">
+                Send the invite link to the joiner. When they send back an answer link, paste it
+                here.
+              </p>
+              {inviteLink && (
+                <button
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(inviteLink).then(() => setCopied(true));
+                  }}
+                  className="mt-2 w-full rounded-xl bg-tg-blue px-3 py-2 text-xs font-semibold text-white hover:bg-tg-blueDark"
+                >
+                  {copied ? "Invite link copied!" : "Copy invite link"}
+                </button>
+              )}
+              <textarea
+                value={answerText}
+                onChange={(e) => setAnswerText(e.target.value)}
+                rows={2}
+                placeholder="Paste the joiner's answer link or code…"
+                className="mt-2 w-full resize-none rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-[11px] outline-none"
+              />
+              <button
+                disabled={!answerText.trim()}
+                onClick={() => onScanAnswer(answerText.trim())}
+                className="mt-2 w-full rounded-xl bg-tg-green px-3 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+              >
+                Complete connection
+              </button>
+            </div>
+
+            <button
+              onClick={onGenerate}
+              className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium hover:bg-white/5"
+            >
+              Regenerate invite
+            </button>
             <button
               onClick={onClose}
               className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium hover:bg-white/5"
@@ -515,7 +581,7 @@ function InviteModal({
 
         {relayLink && (
           <div className="mt-3 flex flex-col items-center gap-3">
-            <QRCanvas value={relayLink} size={230} />
+            <QRCanvas value={relayLink} size={300} />
             <p className="text-center text-xs text-white/60">
               Share this link. Anyone on your network can open it and request to join.
             </p>

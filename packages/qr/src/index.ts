@@ -1,6 +1,7 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { fromBase64Url, toBase64Url } from "@ghostwire/crypto";
 import type { RoleToken, Role } from "@ghostwire/protocol";
+import LZString from "lz-string";
 import { z } from "zod";
 
 /**
@@ -10,11 +11,20 @@ import { z } from "zod";
  */
 export const QR_PREFIX = "GW1:";
 
-/** WebRTC signaling fragment embedded in a bootstrap QR. */
+/**
+ * WebRTC signaling fragment embedded in a bootstrap QR.
+ *
+ * `sdp` is the plaintext session description; when a payload is encoded the
+ * SDP is LZ-compressed into `sdpz` to keep the QR small enough to scan
+ * reliably (a raw non-trickle SDP makes a very dense code). Decoding restores
+ * `sdp` so consumers never see the difference.
+ */
 export interface SignalingPayload {
   type: "offer" | "answer";
   /** Non-trickle SDP: gathering is complete, so no separate ICE exchange. */
-  sdp: string;
+  sdp?: string;
+  /** LZ-compressed SDP (raw bytes), present on encoded payloads. */
+  sdpz?: Uint8Array;
   /** Shared connection id chosen by the offerer. */
   id?: string;
 }
@@ -49,7 +59,8 @@ const bytes = z.instanceof(Uint8Array);
 
 const signalingSchema = z.object({
   type: z.enum(["offer", "answer"]),
-  sdp: z.string().min(1),
+  sdp: z.string().optional(),
+  sdpz: bytes.optional(),
   id: z.string().optional(),
 });
 
@@ -77,6 +88,24 @@ export const qrPayloadSchema = z.object({
   relay: z.string().optional(),
 });
 
+/** Compress an SDP into `sdpz` so the QR stays small enough to scan. */
+function packSignaling(sig: SignalingPayload): SignalingPayload {
+  if (sig.sdp && !sig.sdpz) {
+    const { sdp, ...rest } = sig;
+    return { ...rest, sdpz: LZString.compressToUint8Array(sdp) };
+  }
+  return sig;
+}
+
+/** Restore `sdp` from `sdpz` after decoding. */
+function unpackSignaling(sig: SignalingPayload | undefined): SignalingPayload | undefined {
+  if (!sig) return undefined;
+  if (!sig.sdp && sig.sdpz) {
+    return { ...sig, sdp: LZString.decompressFromUint8Array(sig.sdpz) ?? "" };
+  }
+  return sig;
+}
+
 /** Encode a payload into a scannable string. */
 export function encodeQRPayload(payload: QRPayload): string {
   const clean: QRPayload = {
@@ -88,7 +117,7 @@ export function encodeQRPayload(payload: QRPayload): string {
     st: payload.st,
   };
   if (payload.token) clean.token = payload.token;
-  if (payload.sig) clean.sig = payload.sig;
+  if (payload.sig) clean.sig = packSignaling(payload.sig);
   if (payload.aek) clean.aek = payload.aek;
   if (payload.relay) clean.relay = payload.relay;
   return QR_PREFIX + toBase64Url(encode(clean));
@@ -100,7 +129,9 @@ export function tryDecodeQRPayload(text: string): QRPayload | null {
     const trimmed = text.trim();
     if (!trimmed.startsWith(QR_PREFIX)) return null;
     const bytes = fromBase64Url(trimmed.slice(QR_PREFIX.length));
-    return qrPayloadSchema.parse(decode(bytes)) as QRPayload;
+    const payload = qrPayloadSchema.parse(decode(bytes)) as QRPayload;
+    if (payload.sig) payload.sig = unpackSignaling(payload.sig);
+    return payload;
   } catch {
     return null;
   }

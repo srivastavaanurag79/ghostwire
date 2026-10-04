@@ -271,7 +271,7 @@ function buildMeshIdentity(rt: {
 
 export interface CreateSessionResult {
   sessionId: string;
-  inviteFor: (role: Role) => Promise<string>;
+  inviteFor: (role: Role) => Promise<{ qr: string; link: string }>;
 }
 
 export interface CreateSessionOptions {
@@ -375,8 +375,8 @@ export async function createSession(
   };
 }
 
-/** Generate a one-time invite QR (contains this host's WebRTC offer). */
-export async function hostCreateInvite(role: Role): Promise<string> {
+/** Generate a one-time invite: a QR string plus an equivalent shareable link. */
+export async function hostCreateInvite(role: Role): Promise<{ qr: string; link: string }> {
   if (!runtime || !runtime.isHost) throw new Error("Not a host");
   const transport = runtime.transport as WebRTCTransport;
   if (typeof transport.createOffer !== "function") throw new Error("Host transport cannot signal");
@@ -391,14 +391,16 @@ export async function hostCreateInvite(role: Role): Promise<string> {
     st: runtime.sessionStart,
     sig: signaling as SignalingPayload,
   };
-  return encodeQRPayload(payload);
+  const qr = encodeQRPayload(payload);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return { qr, link: `${origin}/join#${qr}` };
 }
 
-/** Host: scan the joiner's answer QR to complete the data channel. */
+/** Host: complete the data channel from the joiner's answer (QR payload or URL). */
 export async function hostScanAnswer(text: string): Promise<void> {
   if (!runtime || !runtime.isHost) throw new Error("Not a host");
-  const payload = decodeQRPayload(text);
-  if (!payload.sig || payload.sig.type !== "answer") throw new Error("Not an answer QR");
+  const payload = decodeInviteText(text);
+  if (!payload.sig || payload.sig.type !== "answer") throw new Error("Not an answer code");
   const transport = runtime.transport as WebRTCTransport;
   const id = payload.sig.id;
   if (!id) throw new Error("Answer is missing its connection id");
@@ -407,7 +409,7 @@ export async function hostScanAnswer(text: string): Promise<void> {
 }
 
 export type JoinOutcome =
-  | { mode: "webrtc"; answerQR: string; role: Role }
+  | { mode: "webrtc"; answerQR: string; answerLink: string; role: Role }
   | { mode: "relay" };
 
 /** Accept a raw `GW1:` payload or a URL that contains one in its hash/query. */
@@ -420,7 +422,7 @@ export function decodeInviteText(text: string): QRPayload {
 
 /**
  * Joiner entry point. Depending on the invite it either performs the WebRTC
- * answer dance (and returns the QR to show back) or connects to a relay.
+ * answer dance (and returns the QR + link to send back) or connects to a relay.
  */
 export async function joinFromInvite(text: string, name: string): Promise<JoinOutcome> {
   const payload = decodeInviteText(text);
@@ -432,7 +434,8 @@ export async function joinFromInvite(text: string, name: string): Promise<JoinOu
     throw new Error("This invite has no connection details");
   }
   const answerQR = await setupWebRTCJoiner(payload, name);
-  return { mode: "webrtc", answerQR, role: payload.role };
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return { mode: "webrtc", answerQR, answerLink: `${origin}/join#${answerQR}`, role: payload.role };
 }
 
 async function setupWebRTCJoiner(payload: QRPayload, name: string): Promise<string> {
