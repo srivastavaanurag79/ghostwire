@@ -48,6 +48,11 @@ export class WebSocketTransport extends BaseTransport {
     return this.selfId;
   }
 
+  /** The relay URL this transport is connected to. */
+  get relayUrl(): string {
+    return this.url;
+  }
+
   get isOpen(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
   }

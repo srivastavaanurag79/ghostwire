@@ -12,6 +12,7 @@ import {
   approveJoin,
   closeSession,
   hostCreateInvite,
+  hostCreateRelayInvite,
   hostScanAnswer,
   panicWipe,
   rejectJoin,
@@ -33,6 +34,7 @@ export default function ChatPage() {
   const sessionId = useUi((s) => s.sessionId);
   const myName = useUi((s) => s.myName);
   const isHost = useUi((s) => s.isHost);
+  const transportKind = useUi((s) => s.transportKind);
   const peers = useUi((s) => s.peers);
   const messages = useUi((s) => s.messages);
   const joinRequests = useUi((s) => s.joinRequests);
@@ -44,6 +46,7 @@ export default function ChatPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<Role>("listener");
   const [inviteQR, setInviteQR] = useState<string | null>(null);
+  const [relayLink, setRelayLink] = useState<string | null>(null);
   const [answerScanning, setAnswerScanning] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -66,9 +69,15 @@ export default function ChatPage() {
   async function generateInvite() {
     setInviteError(null);
     try {
-      const qr = await hostCreateInvite(inviteRole);
-      setInviteQR(qr);
-      setAnswerScanning(true);
+      if (transportKind === "relay") {
+        const { link } = hostCreateRelayInvite(inviteRole);
+        setRelayLink(link);
+        setInviteQR(null);
+      } else {
+        const qr = await hostCreateInvite(inviteRole);
+        setInviteQR(qr);
+        setAnswerScanning(true);
+      }
     } catch (e) {
       setInviteError(e instanceof Error ? e.message : "Could not generate invite");
     }
@@ -158,26 +167,7 @@ export default function ChatPage() {
                 Join requests · {joinRequests.length}
               </p>
               {joinRequests.map((req) => (
-                <div key={req.peerId} className="rounded-xl border border-tg-amber/30 bg-tg-amber/5 p-3">
-                  <p className="text-sm font-medium">{req.name}</p>
-                  <p className="text-xs text-white/50">
-                    asked to join as {ROLE_META[req.requestedRole].label}
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={() => approveJoin(req.peerId, req.requestedRole)}
-                      className="flex-1 rounded-lg bg-tg-green px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => rejectJoin(req.peerId)}
-                      className="rounded-lg border border-white/15 px-3 py-2 text-xs font-medium hover:bg-white/5"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
+                <JoinRequestCard key={req.peerId} request={req} />
               ))}
             </div>
           )}
@@ -329,7 +319,9 @@ export default function ChatPage() {
         <InviteModal
           role={inviteRole}
           setRole={setInviteRole}
+          transportKind={transportKind}
           qr={inviteQR}
+          relayLink={relayLink}
           error={inviteError}
           scanning={answerScanning}
           onGenerate={generateInvite}
@@ -346,6 +338,7 @@ export default function ChatPage() {
           onClose={() => {
             setInviteOpen(false);
             setInviteQR(null);
+            setRelayLink(null);
             setAnswerScanning(false);
           }}
         />
@@ -383,10 +376,51 @@ function MessageBubble({ message, mine }: { message: ChatMessage; mine: boolean 
   );
 }
 
+function JoinRequestCard({
+  request,
+}: {
+  request: { peerId: string; name: string; requestedRole: Role };
+}) {
+  const [role, setRole] = useState<Role>(request.requestedRole);
+  return (
+    <div className="rounded-xl border border-tg-amber/30 bg-tg-amber/5 p-3">
+      <p className="text-sm font-medium">{request.name}</p>
+      <p className="text-xs text-white/50">asked to join</p>
+      <select
+        value={role}
+        onChange={(e) => setRole(e.target.value as Role)}
+        className="mt-2 w-full rounded-lg border border-white/15 bg-[#17212b] px-3 py-2 text-xs"
+      >
+        {INVITE_ROLES.map((r) => (
+          <option key={r} value={r}>
+            {ROLE_META[r].label}
+          </option>
+        ))}
+      </select>
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => approveJoin(request.peerId, role)}
+          className="flex-1 rounded-lg bg-tg-green px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+        >
+          Approve
+        </button>
+        <button
+          onClick={() => rejectJoin(request.peerId)}
+          className="rounded-lg border border-white/15 px-3 py-2 text-xs font-medium hover:bg-white/5"
+        >
+          Decline
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function InviteModal({
   role,
   setRole,
+  transportKind,
   qr,
+  relayLink,
   error,
   scanning,
   onGenerate,
@@ -395,13 +429,18 @@ function InviteModal({
 }: {
   role: Role;
   setRole: (role: Role) => void;
+  transportKind: "webrtc" | "relay" | null;
   qr: string | null;
+  relayLink: string | null;
   error: string | null;
   scanning: boolean;
   onGenerate: () => void;
   onScanAnswer: (text: string) => void;
   onClose: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+  const started = Boolean(qr) || Boolean(relayLink);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
       <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#17212b] p-6">
@@ -418,7 +457,7 @@ function InviteModal({
           </p>
         )}
 
-        {!qr && (
+        {!started && (
           <>
             <p className="mt-2 text-sm text-white/60">Choose the role this invite grants.</p>
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -436,15 +475,11 @@ function InviteModal({
                 </button>
               ))}
             </div>
-            <p className="mt-3 text-xs text-white/40">
-              The invite also carries this device's connection offer. You will scan the joiner's
-              answer next.
-            </p>
             <button
               onClick={onGenerate}
               className="mt-4 w-full rounded-2xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white hover:bg-tg-blueDark"
             >
-              Generate invite QR
+              {transportKind === "relay" ? "Generate invite link" : "Generate invite QR"}
             </button>
           </>
         )}
@@ -463,12 +498,41 @@ function InviteModal({
               />
             ) : (
               <button
-                onClick={() => onGenerate()}
+                onClick={onGenerate}
                 className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium hover:bg-white/5"
               >
                 Regenerate
               </button>
             )}
+            <button
+              onClick={onClose}
+              className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium hover:bg-white/5"
+            >
+              Done
+            </button>
+          </div>
+        )}
+
+        {relayLink && (
+          <div className="mt-3 flex flex-col items-center gap-3">
+            <QRCanvas value={relayLink} size={230} />
+            <p className="text-center text-xs text-white/60">
+              Share this link. Anyone on your network can open it and request to join.
+            </p>
+            <input
+              readOnly
+              value={relayLink}
+              onFocus={(e) => e.currentTarget.select()}
+              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-[11px]"
+            />
+            <button
+              onClick={() => {
+                void navigator.clipboard?.writeText(relayLink).then(() => setCopied(true));
+              }}
+              className="w-full rounded-2xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white hover:bg-tg-blueDark"
+            >
+              {copied ? "Copied!" : "Copy link"}
+            </button>
             <button
               onClick={onClose}
               className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium hover:bg-white/5"

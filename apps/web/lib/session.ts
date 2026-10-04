@@ -274,8 +274,16 @@ export interface CreateSessionResult {
   inviteFor: (role: Role) => Promise<string>;
 }
 
+export interface CreateSessionOptions {
+  /** When provided, the host connects through this WebSocket relay. */
+  relayUrl?: string;
+}
+
 /** Host a new session. The admin device is the hub every peer connects to. */
-export function createSession(name: string): CreateSessionResult {
+export async function createSession(
+  name: string,
+  options: CreateSessionOptions = {},
+): Promise<CreateSessionResult> {
   teardown({ reload: false, silent: true });
   const sessionId = randomUUID();
   const sessionKey = randomBytes(32);
@@ -293,7 +301,14 @@ export function createSession(name: string): CreateSessionResult {
     issuerPubkey: adminKeyPair.publicKey,
   });
 
-  const transport = new BrowserWebRTCTransport();
+  const transportKind: TransportKind = options.relayUrl ? "relay" : "webrtc";
+  const transport: Transport = options.relayUrl
+    ? new WebSocketTransport(options.relayUrl)
+    : new BrowserWebRTCTransport();
+  if (options.relayUrl) {
+    await (transport as WebSocketTransport).open();
+  }
+
   const mesh = new MeshNode({
     transport,
     sessionId,
@@ -326,7 +341,7 @@ export function createSession(name: string): CreateSessionResult {
     adminPrivateKey: adminKeyPair.privateKey,
     transport,
     mesh,
-    transportKind: "webrtc",
+    transportKind,
     pendingInvites: new Map(),
     pendingJoinPeers: new Map(),
     incomingTransfers: new Map(),
@@ -342,10 +357,16 @@ export function createSession(name: string): CreateSessionResult {
     sessionId,
     myName: displayName,
     isHost: true,
-    transportKind: "webrtc",
+    transportKind,
     joined: true,
   });
-  ui.addMessage(systemMessage("Session created. Share an invite QR to bring people in."));
+  ui.addMessage(
+    systemMessage(
+      transportKind === "relay"
+        ? `Session created over relay ${options.relayUrl}. Generate an invite link to bring people in.`
+        : "Session created. Share an invite QR to bring people in.",
+    ),
+  );
   startHeartbeat();
 
   return {
@@ -385,41 +406,87 @@ export async function hostScanAnswer(text: string): Promise<void> {
   useUi.getState().addMessage(systemMessage("Link established. Waiting for the join request…"));
 }
 
-export interface JoinResult {
-  answerQR: string;
-  role: Role;
+export type JoinOutcome =
+  | { mode: "webrtc"; answerQR: string; role: Role }
+  | { mode: "relay" };
+
+/** Accept a raw `GW1:` payload or a URL that contains one in its hash/query. */
+export function decodeInviteText(text: string): QRPayload {
+  const trimmed = text.trim();
+  const index = trimmed.indexOf("GW1:");
+  if (index < 0) throw new Error("This QR is not a GhostWire invite");
+  return decodeQRPayload(trimmed.slice(index));
 }
 
 /**
- * Joiner: scan the host's invite QR, derive the answer QR to show back.
- * The data channel opens once the host scans the answer.
+ * Joiner entry point. Depending on the invite it either performs the WebRTC
+ * answer dance (and returns the QR to show back) or connects to a relay.
  */
-export async function joinScanInvite(text: string, name: string): Promise<JoinResult> {
-  teardown({ reload: false, silent: true });
-  const payload = decodeQRPayload(text);
-  if (!payload.sig || payload.sig.type !== "offer") {
-    throw new Error("This QR is not a session invite");
+export async function joinFromInvite(text: string, name: string): Promise<JoinOutcome> {
+  const payload = decodeInviteText(text);
+  if (payload.relay) {
+    await setupRelayJoiner(payload, name);
+    return { mode: "relay" };
   }
+  if (!payload.sig || payload.sig.type !== "offer") {
+    throw new Error("This invite has no connection details");
+  }
+  const answerQR = await setupWebRTCJoiner(payload, name);
+  return { mode: "webrtc", answerQR, role: payload.role };
+}
+
+async function setupWebRTCJoiner(payload: QRPayload, name: string): Promise<string> {
+  teardown({ reload: false, silent: true });
   const displayName = name.trim() || "Guest";
   const keyPair = generateSigningKeyPair();
   const token = placeholderToken(displayName, keyPair, payload.sid);
-
   const transport = new BrowserWebRTCTransport();
-  const { peerId, signaling } = await transport.acceptOffer(payload.sig as SignalingData);
-  void peerId;
+  const { signaling } = await transport.acceptOffer(payload.sig as SignalingData);
+  createJoinerRuntime({ payload, name: displayName, keyPair, token, transport, kind: "webrtc" });
+  const answer: QRPayload = {
+    v: 1,
+    sid: payload.sid,
+    role: payload.role,
+    sk: payload.sk,
+    apk: payload.apk,
+    st: payload.st,
+    sig: signaling as SignalingPayload,
+  };
+  return encodeQRPayload(answer);
+}
 
+async function setupRelayJoiner(payload: QRPayload, name: string): Promise<void> {
+  teardown({ reload: false, silent: true });
+  const displayName = name.trim() || "Guest";
+  const keyPair = generateSigningKeyPair();
+  const token = placeholderToken(displayName, keyPair, payload.sid);
+  const transport = new WebSocketTransport(payload.relay!);
+  await transport.open();
+  createJoinerRuntime({ payload, name: displayName, keyPair, token, transport, kind: "relay" });
+  runtime?.mesh.send("join_request", { name: displayName, pubkey: keyPair.publicKey });
+}
+
+function createJoinerRuntime(params: {
+  payload: QRPayload;
+  name: string;
+  keyPair: KeyPair;
+  token: RoleToken;
+  transport: Transport;
+  kind: TransportKind;
+}): void {
+  const { payload, name, keyPair, token, transport, kind } = params;
   const mesh = new MeshNode({
     transport,
     sessionId: payload.sid,
     sessionKey: payload.sk,
     sessionStart: payload.st,
     adminPubKey: payload.apk,
-    identity: buildMeshIdentity({ name: displayName, role: "listener", token, keyPair }),
+    identity: buildMeshIdentity({ name, role: "listener", token, keyPair }),
     onMessage: handleIncoming,
     onPeerJoin: () => {
       refreshPeers();
       if (runtime && !runtime.joined) {
-        runtime.mesh.send("join_request", { name: displayName, pubkey: keyPair.publicKey });
+        runtime.mesh.send("join_request", { name, pubkey: keyPair.publicKey });
       }
     },
     onPeerLeave: () => refreshPeers(),
@@ -433,13 +500,13 @@ export async function joinScanInvite(text: string, name: string): Promise<JoinRe
     sessionKey: payload.sk,
     adminPubKey: payload.apk,
     sessionStart: payload.st,
-    name: displayName,
+    name,
     keyPair,
     token,
     delegations: [],
     transport,
     mesh,
-    transportKind: "webrtc",
+    transportKind: kind,
     pendingInvites: new Map(),
     pendingJoinPeers: new Map(),
     incomingTransfers: new Map(),
@@ -452,33 +519,34 @@ export async function joinScanInvite(text: string, name: string): Promise<JoinRe
   ui.activate({
     role: "listener",
     sessionId: payload.sid,
-    myName: displayName,
+    myName: name,
     isHost: false,
-    transportKind: "webrtc",
+    transportKind: kind,
     joined: false,
   });
-  ui.setNotice("Hand the answer QR back to the host to complete the link.");
-
-  const answer: QRPayload = {
-    v: 1,
-    sid: payload.sid,
-    role: payload.role,
-    sk: payload.sk,
-    apk: payload.apk,
-    st: payload.st,
-    sig: signaling as SignalingPayload,
-  };
-  return { answerQR: encodeQRPayload(answer), role: payload.role };
+  ui.setNotice(
+    kind === "relay"
+      ? "Connected to the relay. Waiting for the host to approve…"
+      : "Hand the answer QR back to the host to complete the link.",
+  );
 }
 
-/** Optional: join through a self-hosted relay (hotspot / intranet mode). */
-export async function joinViaRelay(url: string, name: string): Promise<void> {
-  teardown({ reload: false, silent: true });
-  const displayName = name.trim() || "Guest";
-  const transport = new WebSocketTransport(url);
-  await transport.open();
-  // Relay mode still needs session material; it arrives out of band (link with #).
-  throw new Error("Relay join requires session material; use a relay invite link.");
+/** Host: build a relay invite link + QR payload for a chosen role. */
+export function hostCreateRelayInvite(role: Role): { link: string; payload: string } {
+  if (!runtime || !runtime.isHost) throw new Error("Not a host");
+  if (runtime.transportKind !== "relay") throw new Error("This session is not in relay mode");
+  const payload: QRPayload = {
+    v: 1,
+    sid: runtime.sessionId,
+    role,
+    sk: runtime.sessionKey,
+    apk: runtime.adminPubKey,
+    st: runtime.sessionStart,
+    relay: (runtime.transport as WebSocketTransport).relayUrl,
+  };
+  const encoded = encodeQRPayload(payload);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return { link: `${origin}/join#${encoded}`, payload: encoded };
 }
 
 export function approveJoin(peerId: string, role: Role): void {

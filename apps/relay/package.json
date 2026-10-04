@@ -1,0 +1,21 @@
+{
+  "name": "@ghostwire/relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Optional self-hosted WebSocket relay for GhostWire (hotspot / admin-as-server mode).",
+  "bin": {
+    "ghostwire-relay": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "build": "node -e \"console.log('relay: no build step (plain Node)')\"",
+    "typecheck": "node --check server.mjs",
+    "test": "node --test",
+    "lint": "node -e \"console.log('relay: no lint')\"",
+    "clean": "node -e \"console.log('relay: nothing to clean')\""
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
