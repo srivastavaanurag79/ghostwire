@@ -209,7 +209,8 @@ standalone and offline afterwards.
 ghostwire/
 ├── apps/
 │   ├── web/        Next.js 15 PWA (Telegram-style UI) — the working prototype
-│   └── relay/      Optional self-hosted WebSocket relay (hotspot / admin-as-server)
+│   ├── relay/      Self-hosted WebSocket relay (hotspot / admin-as-server, PIN joins)
+│   └── native/     Expo app (relay+PIN working; Bluetooth LE mesh in progress)
 ├── packages/
 │   ├── crypto/     Ed25519, X25519, AES-GCM, HKDF, encodings, random, zeroize
 │   ├── protocol/   Envelopes, inner messages, key ratchet, msgpack, Zod schemas
@@ -272,9 +273,10 @@ scope. See [`SECURITY.md`](./SECURITY.md) to report a vulnerability.
 - [x] Web PWA with Telegram-style UI, offline service worker, icons
 - [x] End-to-end encrypted chat, roles, approvals, revocation, panic wipe
 - [x] Chunked file sharing with hash verification
-- [x] Optional WebSocket relay (hotspot / admin-as-server mode)
+- [x] Optional WebSocket relay (hotspot / admin-as-server mode) with 6-digit PIN joins
 - [x] Vercel deployment + CI
-- [ ] Native Expo app (WebRTC + Bluetooth LE)
+- [x] Native Expo app: relay + PIN session engine
+- [ ] Native Bluetooth LE mesh + on-phone relay (no internet, no hotspot)
 - [ ] Independent security audit
 - [ ] Optional message batching to further blunt timing metadata
 - [ ] Multi-admin sessions
