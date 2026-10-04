@@ -13,10 +13,10 @@ crypto, roles and mesh packages as the web app.
 | Chat UI (Telegram-style, dark) | ✅ working |
 | Bluetooth LE transport core (framing, reassembly, adapter contract) | ✅ implemented |
 | BLE session create/join wired into the app | ✅ implemented |
-| BLE GATT central plumbing (react-native-ble-plx) | 🚧 needs a dev build |
+| BLE GATT central (react-native-ble-plx: scan/connect/notify/write) | ✅ implemented |
+| Camera QR: invite render + scan | ✅ implemented |
 | BLE advertising/peripheral half (dual-role mesh) | 🚧 needs a peripheral module |
 | On-phone relay (`src/server/local-relay.ts`) | 🚧 interface + plan |
-| Camera QR scanning / QR rendering | 🚧 planned (payload is shown as text today) |
 
 ## Run it
 

@@ -11,6 +11,8 @@ import {
 import { StatusBar } from "expo-status-bar";
 import type { Role } from "@ghostwire/protocol";
 import { NativeSession } from "./src/session";
+import { InviteQR } from "./src/components/InviteQR";
+import { QrScanner } from "./src/components/QrScanner";
 
 const session = new NativeSession();
 const DEFAULT_RELAY = "ws://192.168.1.10:8787";
@@ -23,6 +25,7 @@ export default function App() {
   const [mode, setMode] = useState<"home" | "create" | "join" | "ble" | "blejoin">("home");
   const [text, setText] = useState("");
   const [blePayload, setBlePayload] = useState("");
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -60,13 +63,10 @@ export default function App() {
 
         {state.transport === "ble" && state.bleQr && (
           <View style={styles.bleBox}>
-            <Text style={styles.bleTitle}>Bluetooth invite (show as QR)</Text>
-            <Text selectable style={styles.blePayload}>
-              {state.bleQr}
-            </Text>
+            <Text style={styles.bleTitle}>Bluetooth invite — show this QR</Text>
+            <InviteQR value={state.bleQr} size={220} />
             <Text style={styles.bleHint}>
-              One QR only — BLE needs no answer handshake. Camera rendering is coming; for now share
-              this text with a nearby device.
+              One QR only — BLE needs no answer handshake. Nearby devices scan it to join.
             </Text>
           </View>
         )}
@@ -217,6 +217,9 @@ export default function App() {
                   placeholder="Paste the GW1:… invite from the host"
                   placeholderTextColor="#7f91a4"
                 />
+                <TouchableOpacity style={styles.secondary} onPress={() => setScanning(true)}>
+                  <Text style={styles.secondaryText}>Scan invite QR with camera</Text>
+                </TouchableOpacity>
               </>
             )}
 
@@ -250,6 +253,15 @@ export default function App() {
           </>
         )}
       </ScrollView>
+      {scanning && (
+        <QrScanner
+          onResult={(data) => {
+            setScanning(false);
+            void run(() => session.joinBle(data, name));
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
