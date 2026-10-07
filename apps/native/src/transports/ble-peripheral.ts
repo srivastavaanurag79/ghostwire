@@ -137,7 +137,10 @@ export function createDualRoleAdapter(): DualRoleBleAdapter {
 }
 
 function loadModule(): BlePeripheralModule {
-  // Static require (Metro rejects dynamic requires).
+  // Static require (Metro rejects dynamic requires). Handle default export shape.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  return require("react-native-ble-peripheral") as BlePeripheralModule;
+  const mod = require("react-native-ble-peripheral") as BlePeripheralModule & {
+    default?: BlePeripheralModule;
+  };
+  return (mod.default ?? mod) as BlePeripheralModule;
 }

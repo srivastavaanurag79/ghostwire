@@ -1,18 +1,21 @@
 /**
  * Hermes polyfills.
  *
- * Hermes (React Native) does not provide `TextEncoder` / `TextDecoder`, but
- * several dependencies use them at import time — notably `@msgpack/msgpack`
- * (`new TextEncoder()` at module load) and `@noble/hashes` / `@scure/base`
- * (utf8 helpers). Without a polyfill the app crashes on launch with
- * "Property 'TextDecoder' doesn't exist".
+ * Hermes (React Native) does not provide `TextEncoder` / `TextDecoder` or
+ * `crypto.getRandomValues`, but dependencies and our own crypto need them —
+ * `@msgpack/msgpack` uses `new TextEncoder()` at module load, and
+ * `@noble/hashes` calls `crypto.getRandomValues`. Without these polyfills the
+ * app crashes on launch or throws inside functions.
  *
  * This must be imported before any such dependency, so it is the first import
  * in `index.js`.
  */
+import * as ExpoCrypto from "expo-crypto";
+
 type MutableGlobal = typeof globalThis & {
   TextEncoder?: unknown;
   TextDecoder?: unknown;
+  crypto?: { getRandomValues?: (array: Uint8Array) => Uint8Array };
 };
 
 function encodeUtf8(value: string): Uint8Array {
@@ -97,4 +100,57 @@ if (typeof g.TextDecoder === "undefined") {
     }
   }
   g.TextDecoder = GhostWireTextDecoder;
+}
+
+// Hermes has no `crypto` global; @noble/hashes needs `crypto.getRandomValues`.
+if (typeof g.crypto === "undefined") {
+  g.crypto = {};
+}
+if (typeof g.crypto.getRandomValues !== "function") {
+  g.crypto.getRandomValues = (array: Uint8Array): Uint8Array => {
+    const bytes = ExpoCrypto.getRandomBytes(array.length);
+    array.set(bytes);
+    return array;
+  };
+}
+
+// `Buffer` is used by react-native-tcp-socket and some libs.
+if (typeof (g as { Buffer?: unknown }).Buffer === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const bufferModule = require("buffer") as { Buffer: unknown };
+  (g as { Buffer?: unknown }).Buffer = bufferModule.Buffer;
+}
+
+// `atob` / `btoa` are not in Hermes but are used by assorted libraries.
+const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+if (typeof (g as { atob?: unknown }).atob !== "function") {
+  (g as { atob?: unknown }).atob = (data: string): string => {
+    const clean = data.replace(/[^A-Za-z0-9+/=]/g, "");
+    let binary = "";
+    for (let i = 0; i < clean.length; i += 4) {
+      const c0 = B64.indexOf(clean[i]!);
+      const c1 = B64.indexOf(clean[i + 1]!);
+      const c2 = clean[i + 2] === "=" ? -1 : B64.indexOf(clean[i + 2]!);
+      const c3 = clean[i + 3] === "=" ? -1 : B64.indexOf(clean[i + 3]!);
+      binary += String.fromCharCode((c0 << 2) | (c1 >> 4));
+      if (c2 >= 0) binary += String.fromCharCode(((c1 & 15) << 4) | (c2 >> 2));
+      if (c3 >= 0) binary += String.fromCharCode(((c2 & 3) << 6) | c3);
+    }
+    return binary;
+  };
+}
+if (typeof (g as { btoa?: unknown }).btoa !== "function") {
+  (g as { btoa?: unknown }).btoa = (data: string): string => {
+    let out = "";
+    for (let i = 0; i < data.length; i += 3) {
+      const c0 = data.charCodeAt(i);
+      const c1 = i + 1 < data.length ? data.charCodeAt(i + 1) : NaN;
+      const c2 = i + 2 < data.length ? data.charCodeAt(i + 2) : NaN;
+      out += B64[c0 >> 2];
+      out += B64[((c0 & 3) << 4) | (Number.isNaN(c1) ? 0 : c1 >> 4)];
+      out += Number.isNaN(c1) ? "=" : B64[((c1 & 15) << 2) | (Number.isNaN(c2) ? 0 : c2 >> 6)];
+      out += Number.isNaN(c2) ? "=" : B64[c2 & 63];
+    }
+    return out;
+  };
 }

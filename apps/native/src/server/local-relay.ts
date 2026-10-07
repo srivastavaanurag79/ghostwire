@@ -249,15 +249,11 @@ function safeDecode(bytes: Uint8Array): string {
 function loadTcpSocket(): TcpSocketLike {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require("react-native-tcp-socket").default as TcpSocketLike;
+    const mod = require("react-native-tcp-socket") as TcpSocketLike & { default?: TcpSocketLike };
+    return (mod.default ?? mod) as TcpSocketLike;
   } catch {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      return require("react-native-tcp-socket") as TcpSocketLike;
-    } catch {
-      throw new Error(
-        "On-phone relay needs a development build with react-native-tcp-socket installed.",
-      );
-    }
+    throw new Error(
+      "On-phone relay needs a development build with react-native-tcp-socket installed.",
+    );
   }
 }

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
@@ -12,6 +12,14 @@ export function QrScanner({
 }) {
   const [permission, requestPermission] = useCameraPermissions();
 
+  // Ask for the camera as soon as the scanner opens (Android/iOS only show the
+  // system prompt once; afterwards `granted`/`canAskAgain` reflect the choice).
+  useEffect(() => {
+    if (permission && !permission.granted && permission.canAskAgain) {
+      void requestPermission();
+    }
+  }, [permission, requestPermission]);
+
   if (!permission) {
     return (
       <View style={styles.center}>
@@ -23,9 +31,18 @@ export function QrScanner({
   if (!permission.granted) {
     return (
       <View style={styles.center}>
-        <Text style={styles.text}>Camera permission is required to scan a QR.</Text>
-        <TouchableOpacity style={styles.button} onPress={() => void requestPermission()}>
-          <Text style={styles.buttonText}>Grant camera</Text>
+        <Text style={styles.text}>
+          {permission.canAskAgain
+            ? "Camera permission is required to scan a QR."
+            : "Camera access is blocked. Enable it for GhostWire in your phone's Settings → Apps → Permissions."}
+        </Text>
+        {permission.canAskAgain && (
+          <TouchableOpacity style={styles.button} onPress={() => void requestPermission()}>
+            <Text style={styles.buttonText}>Grant camera</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onClose}>
+          <Text style={styles.linkText}>Close</Text>
         </TouchableOpacity>
       </View>
     );
@@ -75,4 +92,5 @@ const styles = StyleSheet.create({
   },
   button: { backgroundColor: "#2aabee", borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14 },
   buttonText: { color: "#fff", fontWeight: "700" },
+  linkText: { color: "#7f91a4", fontSize: 13 },
 });
