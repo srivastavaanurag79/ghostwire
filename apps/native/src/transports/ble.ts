@@ -67,10 +67,9 @@ export class BlePlxAdapter implements BleAdapter {
 
   async start(opts: Parameters<BleAdapter["start"]>[0]): Promise<void> {
     this.opts = opts;
-    const ble = loadModule<{ BleManager: new () => BleManagerLike }>(
-      "react-native-ble-plx",
-      "Bluetooth needs a development build with react-native-ble-plx.",
-    );
+    // Static require (Metro rejects dynamic requires).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ble = require("react-native-ble-plx") as { BleManager: new () => BleManagerLike };
     this.manager = new ble.BleManager();
 
     if (this.peripheral) {
@@ -128,14 +127,5 @@ export class BlePlxAdapter implements BleAdapter {
     if (this.peripheral) await this.peripheral.stopBroadcast().catch(() => undefined);
     this.manager?.destroy();
     this.manager = null;
-  }
-}
-
-function loadModule<T>(name: string, message: string): T {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require(name) as T;
-  } catch {
-    throw new Error(message);
   }
 }

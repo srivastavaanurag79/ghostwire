@@ -137,17 +137,7 @@ export function createDualRoleAdapter(): DualRoleBleAdapter {
 }
 
 function loadModule(): BlePeripheralModule {
-  return load<BlePeripheralModule>(
-    "react-native-ble-peripheral",
-    "Advertising needs a development build with react-native-ble-peripheral installed.",
-  );
-}
-
-function load<T>(name: string, message: string): T {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require(name) as T;
-  } catch {
-    throw new Error(message);
-  }
+  // Static require (Metro rejects dynamic requires).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require("react-native-ble-peripheral") as BlePeripheralModule;
 }

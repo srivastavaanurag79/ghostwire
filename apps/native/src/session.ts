@@ -32,6 +32,9 @@ import { decodeQRPayload, encodeQRPayload, type QRPayload } from "@ghostwire/qr"
 import { BleTransport } from "./transports/ble";
 import { createDualRoleAdapter } from "./transports/ble-peripheral";
 import { startLocalRelay, type LocalRelayHandle } from "./server/local-relay";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
 interface NativeTransfer {
   id: string;
@@ -618,17 +621,7 @@ export class NativeSession {
     const rt = this.runtime;
     if (!rt) return;
     if (!canSend(rt.role)) throw new Error("You cannot send files");
-    const picker = loadExpo<{
-      getDocumentAsync: (o: unknown) => Promise<{ canceled: boolean; assets?: Array<Record<string, unknown>> }>;
-    }>("expo-document-picker");
-    const FileSystem = loadExpo<{
-      readAsStringAsync: (uri: string, o: unknown) => Promise<string>;
-      cacheDirectory: string;
-      writeAsStringAsync: (path: string, data: string, o: unknown) => Promise<void>;
-      EncodingType: { Base64: string };
-    }>("expo-file-system");
-
-    const res = await picker.getDocumentAsync({ copyToCacheDirectory: true });
+    const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     const asset = res.canceled ? null : res.assets?.[0];
     if (!asset) return;
     const uri = String(asset.uri);
@@ -691,13 +684,9 @@ export class NativeSession {
       return;
     }
     try {
-      const FileSystem = loadExpo<{
-        cacheDirectory: string;
-        writeAsStringAsync: (path: string, data: string, o: unknown) => Promise<void>;
-        EncodingType: { Base64: string };
-      }>("expo-file-system");
       const safeName = file.name.replace(/[^\w.\-]+/g, "_");
-      const path = `${FileSystem.cacheDirectory}ghostwire-${transferId}-${safeName}`;
+      const dir = FileSystem.cacheDirectory ?? "";
+      const path = `${dir}ghostwire-${transferId}-${safeName}`;
       await FileSystem.writeAsStringAsync(path, toBase64(merged), {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -712,10 +701,6 @@ export class NativeSession {
   shareFile = async (id: string): Promise<void> => {
     const transfer = this.state.transfers.find((t) => t.id === id);
     if (!transfer?.url) return;
-    const Sharing = loadExpo<{
-      isAvailableAsync: () => Promise<boolean>;
-      shareAsync: (url: string) => Promise<void>;
-    }>("expo-sharing");
     if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(transfer.url);
   };
 
@@ -743,11 +728,3 @@ export class NativeSession {
   }
 }
 
-function loadExpo<T>(name: string): T {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require(name) as T;
-  } catch {
-    throw new Error(`${name} is not installed; run npm install in apps/native`);
-  }
-}

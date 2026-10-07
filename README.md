@@ -14,6 +14,8 @@ No servers · No accounts · No tracking · End-to-end encrypted · Works offlin
 
 **[Live app → https://qrghostwire.vercel.app](https://qrghostwire.vercel.app)**
 
+**New here?** Read the **[plain-English explainer](./dumb.md)** — no technical background needed.
+
 </div>
 
 ---
@@ -29,6 +31,7 @@ multi-hop mesh, and live **only in RAM**.
 
 ## Table of contents
 
+- [Plain-English explainer (non-technical)](./dumb.md)
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
 - [Features](#features)
