@@ -75,6 +75,11 @@ npx eas-cli build -p android --profile preview   # produces a downloadable .apk
 Install that APK on **two physical phones** and test the Bluetooth mesh. (An emulator has no
 Bluetooth radio.) `--profile development` builds a dev-client APK instead.
 
+**Releases.** Tagging `v*` (or running the workflow manually) triggers
+[`release-apk.yml`](../../.github/workflows/release-apk.yml), which builds the arm64 release APK and
+attaches it to the GitHub Release as `ghostwire.apk`. The web app links to
+`releases/latest/download/ghostwire.apk`, so the binary lives in Releases, not in git history.
+
 **Option B — local build.** Requires the Android SDK (you have it: `%ANDROID_HOME%`) **and JDK 17**
 (Expo SDK 51 / RN 0.74 do not build with JDK 11):
 

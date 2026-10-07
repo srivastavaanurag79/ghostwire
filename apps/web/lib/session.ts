@@ -544,6 +544,9 @@ export async function createRelaySession(
     onMessage: handleIncoming,
     onPeerJoin: () => refreshPeers(),
     onPeerLeave: handlePeerLeave,
+    // The relay is a star and does the fan-out itself, so clients must not
+    // rebroadcast — that keeps large sessions O(N) instead of O(N^2).
+    maxHops: 0,
   });
   mesh.start();
 
@@ -794,6 +797,8 @@ function createJoinerRuntime(params: {
       }
     },
     onPeerLeave: handlePeerLeave,
+    // Clients on a relay must not rebroadcast; the relay fans out for them.
+    maxHops: kind === "relay" ? 0 : undefined,
   });
   mesh.start();
 

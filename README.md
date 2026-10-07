@@ -16,6 +16,8 @@ No servers · No accounts · No tracking · End-to-end encrypted · Works offlin
 
 **New here?** Read the **[plain-English explainer](./dumb.md)** — no technical background needed.
 
+**Android app:** [download the latest APK](https://github.com/srivastavaanurag79/ghostwire/releases/latest/download/ghostwire.apk) (Android 12+, arm64). It's built and attached automatically by the [Release Android APK](.github/workflows/release-apk.yml) workflow.
+
 </div>
 
 ---

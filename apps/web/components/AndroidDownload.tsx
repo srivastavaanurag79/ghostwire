@@ -1,19 +1,23 @@
 "use client";
 
 /**
- * Android APK download link. Defaults to `/downloads/ghostwire.apk` (shipped in
- * the web app's public folder); override with NEXT_PUBLIC_ANDROID_APK_URL to
- * point at a hosted file or a GitHub Release asset instead.
+ * Android APK download link.
+ *
+ * Defaults to the **latest GitHub Release** asset named `ghostwire.apk`, so the
+ * binary lives in Releases (not in git history) and the link is always current.
+ * Override with NEXT_PUBLIC_ANDROID_APK_URL, or set it to "none" to hide.
  */
+const GITHUB_APK_URL =
+  "https://github.com/srivastavaanurag79/ghostwire/releases/latest/download/ghostwire.apk";
+
 export function AndroidDownload({ className = "" }: { className?: string }) {
-  const hidden = process.env.NEXT_PUBLIC_ANDROID_APK_URL === "none";
-  if (hidden) return null;
-  const url = process.env.NEXT_PUBLIC_ANDROID_APK_URL || "/downloads/ghostwire.apk";
+  const configured = process.env.NEXT_PUBLIC_ANDROID_APK_URL;
+  if (configured === "none") return null;
+  const url = configured && configured !== "" ? configured : GITHUB_APK_URL;
 
   return (
     <a
       href={url}
-      download="ghostwire.apk"
       className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 py-4 text-base font-semibold text-white transition hover:bg-white/10 ${className}`}
     >
       <span aria-hidden>🤖</span>
