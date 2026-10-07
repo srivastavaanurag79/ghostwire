@@ -12,10 +12,13 @@
  */
 import * as ExpoCrypto from "expo-crypto";
 
-type MutableGlobal = typeof globalThis & {
+type MutableGlobal = {
   TextEncoder?: unknown;
   TextDecoder?: unknown;
   crypto?: { getRandomValues?: (array: Uint8Array) => Uint8Array };
+  Buffer?: unknown;
+  atob?: unknown;
+  btoa?: unknown;
 };
 
 function encodeUtf8(value: string): Uint8Array {
@@ -70,7 +73,7 @@ function decodeUtf8(bytes: Uint8Array): string {
   return out;
 }
 
-const g = globalThis as MutableGlobal;
+const g = globalThis as unknown as MutableGlobal;
 
 if (typeof g.TextEncoder === "undefined") {
   class GhostWireTextEncoder {

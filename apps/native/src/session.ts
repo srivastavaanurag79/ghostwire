@@ -29,8 +29,7 @@ import {
 } from "@ghostwire/protocol";
 import { WebSocketTransport, type Transport } from "@ghostwire/transport";
 import { decodeQRPayload, encodeQRPayload, type QRPayload } from "@ghostwire/qr";
-import { BleTransport } from "./transports/ble";
-import { createDualRoleAdapter } from "./transports/ble-peripheral";
+import { BleTransport, createBleAdapter } from "./transports/ble";
 import { startLocalRelay, type LocalRelayHandle } from "./server/local-relay";
 import type { SoundName } from "./sound";
 import * as DocumentPicker from "expo-document-picker";
@@ -479,7 +478,7 @@ export class NativeSession {
       issuerPubkey: keyPair.publicKey,
     });
 
-    const transport = new BleTransport(createDualRoleAdapter());
+    const transport = new BleTransport(createBleAdapter());
     await transport.start();
 
     const runtime: Runtime = {
@@ -565,7 +564,7 @@ export class NativeSession {
       issuerPubkey: keyPair.publicKey,
     });
 
-    const transport = new BleTransport(createDualRoleAdapter());
+    const transport = new BleTransport(createBleAdapter());
     await transport.start();
 
     const runtime: Runtime = {
