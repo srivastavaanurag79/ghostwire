@@ -1,3 +1,4 @@
+import { decodeUtf8, encodeUtf8 } from "@ghostwire/crypto";
 import { BaseTransport, type SignalingData } from "./types";
 
 /**
@@ -143,7 +144,7 @@ export class WebSocketTransport extends BaseTransport {
   }
 
   send(peerId: string, data: Uint8Array): void {
-    const target = new TextEncoder().encode(peerId);
+    const target = encodeUtf8(peerId);
     if (target.length > MAX_ID_BYTES) throw new Error("send: peerId too long");
     const frame = new Uint8Array(2 + target.length + data.length);
     frame[0] = FRAME_DIRECTED;
@@ -191,7 +192,7 @@ export class WebSocketTransport extends BaseTransport {
     if (bytes.length < 1) return;
     const senderLen = bytes[0]!;
     if (bytes.length < 1 + senderLen) return;
-    const sender = new TextDecoder().decode(bytes.subarray(1, 1 + senderLen));
+    const sender = decodeUtf8(bytes.subarray(1, 1 + senderLen));
     const payload = bytes.subarray(1 + senderLen);
     if (sender) this.emitMessage(sender, payload);
   }

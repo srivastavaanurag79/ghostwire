@@ -1,4 +1,4 @@
-import { encodeUtf8, fromBase64, sha1, toBase64 } from "@ghostwire/crypto";
+import { decodeUtf8, encodeUtf8, fromBase64, sha1, toBase64 } from "@ghostwire/crypto";
 
 /**
  * Minimal RFC 6455 WebSocket codec: the handshake accept-key and frame
@@ -115,10 +115,10 @@ export function buildUpgradeResponse(request: string): string | null {
   ].join("\r\n");
 }
 
-/** Decode a masked client text frame's payload as JSON (best effort). */
+/** Decode a masked client text frame's payload as text (best effort). */
 export function frameText(frame: WsFrame): string | null {
   try {
-    return new TextDecoder().decode(frame.payload);
+    return decodeUtf8(frame.payload);
   } catch {
     return null;
   }

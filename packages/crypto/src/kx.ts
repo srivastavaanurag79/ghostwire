@@ -1,6 +1,7 @@
 import { x25519 } from "@noble/curves/ed25519";
 import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha256";
+import { encodeUtf8 } from "./encoding";
 import type { KeyPair } from "./keys";
 import { randomBytes } from "./random";
 
@@ -37,6 +38,6 @@ export function deriveKey(
   info: Uint8Array | string,
   length = 32,
 ): Uint8Array {
-  const infoBytes = typeof info === "string" ? new TextEncoder().encode(info) : info;
+  const infoBytes = typeof info === "string" ? encodeUtf8(info) : info;
   return hkdf(sha256, sharedSecret, salt, infoBytes, length);
 }
