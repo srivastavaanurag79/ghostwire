@@ -36,3 +36,15 @@ export const KEY_RETAIN_EPOCHS = 32;
 
 /** Upper bound on how many epochs we will derive in one jump. */
 export const MAX_EPOCH_FORWARD = 4096;
+
+/**
+ * Features a client understands. Exchanged via `peer_announce` so a deployment
+ * can tell whether peers support something before relying on it.
+ */
+export const PROTOCOL_CAPABILITIES = ["multi-admin", "msg-jitter", "relay-rejoin"] as const;
+
+/**
+ * Optional randomized delay (ms) applied to outbound chat before it is sent, to
+ * blunt timing correlation. 0 disables it (keeps behaviour deterministic).
+ */
+export const CHAT_JITTER_MS = 0;

@@ -11,6 +11,7 @@ import { RoleBadge } from "@/components/RoleBadge";
 import {
   approveJoin,
   closeSession,
+  grantAdmin,
   hostCreateInvite,
   hostCreateRelayInvite,
   hostScanAnswer,
@@ -193,13 +194,24 @@ export default function ChatPage() {
                 <RoleBadge role={peer.role} />
               </div>
               {canInvite && peer.role !== "admin" && (
-                <button
-                  title="Revoke"
-                  onClick={() => revokePeer(peer.pubkey)}
-                  className="rounded-lg px-2 py-1 text-xs text-white/40 hover:bg-tg-red/20 hover:text-tg-red"
-                >
-                  revoke
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  {role === "admin" && (
+                    <button
+                      title="Make admin"
+                      onClick={() => grantAdmin(peer.pubkey, peer.name)}
+                      className="rounded-lg px-2 py-1 text-xs text-white/40 hover:bg-tg-purple/20 hover:text-tg-purple"
+                    >
+                      admin
+                    </button>
+                  )}
+                  <button
+                    title="Revoke"
+                    onClick={() => revokePeer(peer.pubkey)}
+                    className="rounded-lg px-2 py-1 text-xs text-white/40 hover:bg-tg-red/20 hover:text-tg-red"
+                  >
+                    revoke
+                  </button>
+                </div>
               )}
             </div>
           ))}

@@ -16,6 +16,9 @@ import {
   FILE_CHUNK_BYTES,
   HEARTBEAT_INTERVAL_MS,
   PEER_TIMEOUT_MS,
+  PROTOCOL_CAPABILITIES,
+  PROTOCOL_VERSION,
+  type AdminGrantBody,
   type ChatBody,
   type DelegationCert,
   type FileChunkBody,
@@ -76,6 +79,8 @@ interface Runtime {
   token: RoleToken;
   delegations: DelegationCert[];
   adminPrivateKey?: Uint8Array;
+  /** Additional admin keys (multi-admin sessions). */
+  adminKeys: Uint8Array[];
   transport: Transport;
   mesh: MeshNode;
   transportKind: TransportKind;
@@ -155,6 +160,7 @@ function stopHeartbeat(): void {
 
 let connectionTimer: ReturnType<typeof setInterval> | null = null;
 let connectionBound = false;
+const warnedVersions = new Set<string>();
 
 function computeOnline(): boolean {
   const rt = runtime;
@@ -200,7 +206,11 @@ function announce(): void {
     pubkey: p.pubkey,
     role: p.role,
   }));
-  runtime.mesh.send("peer_announce", { peers });
+  runtime.mesh.send("peer_announce", {
+    peers,
+    pv: PROTOCOL_VERSION,
+    caps: [...PROTOCOL_CAPABILITIES],
+  });
 }
 
 /** Build a self-signed placeholder token so a joiner can emit join_request. */
@@ -299,7 +309,30 @@ function handleIncoming(inner: InnerMessage, fromPeerId: string): void {
       teardown({ reload: true });
       break;
     }
-    case "peer_announce":
+    case "peer_announce": {
+      const body = inner.body as { pv?: number };
+      const hex = toHex(inner.sender.pubkey);
+      if (body?.pv && body.pv !== PROTOCOL_VERSION && !warnedVersions.has(hex)) {
+        warnedVersions.add(hex);
+        notify(
+          "error",
+          "Version mismatch",
+          `${inner.sender.name} is on protocol v${body.pv}; you are on v${PROTOCOL_VERSION}.`,
+        );
+      }
+      break;
+    }
+    case "admin_grant": {
+      const body = inner.body as AdminGrantBody;
+      if (body?.pubkey?.length) {
+        if (!runtime.adminKeys.some((k) => toHex(k) === toHex(body.pubkey))) {
+          runtime.adminKeys.push(body.pubkey);
+        }
+        notify("success", `${body.name ?? "A participant"} is now an admin`);
+        ui.addMessage(systemMessage(`${body.name ?? "A participant"} was granted admin.`));
+      }
+      break;
+    }
     case "peer_leave":
     case "ping":
       break;
@@ -427,6 +460,7 @@ export async function createSession(
     token,
     delegations: [],
     adminPrivateKey: adminKeyPair.privateKey,
+    adminKeys: [],
     transport,
     mesh,
     transportKind,
@@ -525,6 +559,7 @@ export async function createRelaySession(
     token,
     delegations: [],
     adminPrivateKey: adminKeyPair.privateKey,
+    adminKeys: [],
     transport,
     mesh,
     transportKind: "relay",
@@ -773,6 +808,7 @@ function createJoinerRuntime(params: {
     keyPair,
     token,
     delegations: [],
+    adminKeys: [],
     transport,
     mesh,
     transportKind: kind,
@@ -890,6 +926,26 @@ export function revokePeer(pubkey: Uint8Array): void {
   refreshPeers();
 }
 
+/** Promote a participant to admin (multi-admin sessions). */
+export function grantAdmin(pubkey: Uint8Array, name: string): void {
+  if (!runtime) return;
+  if (runtime.role !== "admin") throw new Error("Only an admin can grant admin");
+  const token = issueRoleToken({
+    sessionId: runtime.sessionId,
+    name,
+    subjectPubkey: pubkey,
+    role: "admin",
+    issuerPrivateKey: runtime.isHost ? runtime.adminPrivateKey! : runtime.keyPair.privateKey,
+    issuerPubkey: runtime.isHost ? runtime.adminPubKey : runtime.keyPair.publicKey,
+  });
+  runtime.mesh.send("token_issue", { token } satisfies TokenIssueBody);
+  runtime.mesh.send("admin_grant", { pubkey, name } satisfies AdminGrantBody);
+  if (!runtime.adminKeys.some((k) => toHex(k) === toHex(pubkey))) {
+    runtime.adminKeys.push(pubkey);
+  }
+  useUi.getState().addMessage(systemMessage(`${name} is now an admin.`));
+}
+
 export function sendChat(text: string): void {
   if (!runtime) return;
   const trimmed = text.trim();
@@ -952,6 +1008,7 @@ function teardown(opts: { reload: boolean; silent?: boolean }): void {
   rt.pendingInvites.clear();
   rt.pendingJoinPeers.clear();
   rt.incomingTransfers.clear();
+  warnedVersions.clear();
 
   useUi.getState().reset();
   if (opts.reload && typeof window !== "undefined") window.location.reload();

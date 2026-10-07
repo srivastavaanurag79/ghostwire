@@ -12,6 +12,8 @@ import {
   sealEnvelope,
   type DelegationCert,
   type Envelope,
+  type AdminGrantBody,
+  type PeerAnnounceBody,
   type InnerMessage,
   type MessageBody,
   type MessageType,
@@ -41,6 +43,8 @@ export interface MeshNodeOptions {
   /** Unix ms when the session was created; anchors the key-ratchet schedule. */
   sessionStart: number;
   adminPubKey: Uint8Array;
+  /** Extra admin keys (multi-admin sessions). */
+  additionalAdmins?: Uint8Array[];
   identity: MeshIdentity;
   delegations?: DelegationCert[];
   /** Called for every authenticated, role-valid inner message. */
@@ -52,6 +56,8 @@ export interface MeshNodeOptions {
   dedupLimit?: number;
   ttl?: number;
   maxHops?: number;
+  /** Randomized outbound delay (ms) for chat, to blunt timing correlation. */
+  chatJitterMs?: number;
 }
 
 /**
@@ -68,6 +74,8 @@ export class MeshNode {
   private readonly registry = new PeerRegistry();
   private readonly delegations = new Map<string, DelegationCert>();
   private readonly revoked = new Set<string>();
+  private readonly adminKeys: Uint8Array[];
+  private readonly peerCaps = new Map<string, { pv?: number; caps: string[] }>();
   private readonly keyring: SessionKeyring;
   private unsubscribers: Array<() => void> = [];
   private running = false;
@@ -75,6 +83,7 @@ export class MeshNode {
   constructor(private readonly options: MeshNodeOptions) {
     this.seen = new SeenCache(options.dedupLimit);
     this.keyring = new SessionKeyring(options.sessionKey, options.sessionStart);
+    this.adminKeys = [options.adminPubKey, ...(options.additionalAdmins ?? [])];
     for (const cert of options.delegations ?? []) this.addDelegation(cert);
   }
 
@@ -98,6 +107,21 @@ export class MeshNode {
 
   isRevoked(pubkey: Uint8Array): boolean {
     return this.revoked.has(encodeKey(pubkey));
+  }
+
+  /** Register an additional admin key (multi-admin sessions). */
+  addAdmin(pubkey: Uint8Array): void {
+    if (this.adminKeys.some((key) => timingSafeEqual(key, pubkey))) return;
+    this.adminKeys.push(pubkey);
+  }
+
+  isAdmin(pubkey: Uint8Array): boolean {
+    return this.adminKeys.some((key) => timingSafeEqual(key, pubkey));
+  }
+
+  /** Capabilities/protocol version advertised by a peer (from peer_announce). */
+  peerInfo(pubkey: Uint8Array): { pv?: number; caps: string[] } | undefined {
+    return this.peerCaps.get(encodeKey(pubkey));
   }
 
   start(): void {
@@ -153,7 +177,20 @@ export class MeshNode {
       signerPrivateKey: identity.privateKey,
     });
     this.seen.add(envelope.id);
-    this.options.transport.broadcast(encodeEnvelope(envelope));
+    // The granting admin trusts the new admin immediately.
+    if (type === "admin_grant") {
+      const granted = (body as AdminGrantBody)?.pubkey;
+      if (granted?.length) this.addAdmin(granted);
+    }
+    const bytes = encodeEnvelope(envelope);
+    const jitter = this.options.chatJitterMs ?? 0;
+    if (type === "chat" && jitter > 0) {
+      // Randomize the send time so message timing is harder to correlate.
+      const delay = Math.floor(Math.random() * jitter);
+      setTimeout(() => this.options.transport.broadcast(bytes), delay);
+    } else {
+      this.options.transport.broadcast(bytes);
+    }
     return envelope;
   }
 
@@ -166,6 +203,7 @@ export class MeshNode {
     return {
       sessionId: this.options.sessionId,
       adminPubKey: this.options.adminPubKey,
+      adminPubKeys: this.adminKeys.slice(1),
       delegations: [...this.delegations.values()],
     };
   }
@@ -217,6 +255,30 @@ export class MeshNode {
     }
 
     const isSelf = timingSafeEqual(inner.sender.pubkey, this.options.identity.publicKey);
+
+    if (inner.type === "admin_grant") {
+      if (!this.isAdmin(inner.sender.pubkey)) {
+        return this.drop("admin_grant from a non-admin", envelope);
+      }
+      const body = inner.body as AdminGrantBody;
+      if (body?.pubkey?.length) {
+        this.addAdmin(body.pubkey);
+        this.registry.upsert(fromPeerId, {
+          name: inner.sender.name,
+          pubkey: inner.sender.pubkey,
+          role: inner.sender.role,
+        });
+      }
+    }
+
+    if (inner.type === "peer_announce") {
+      const body = inner.body as PeerAnnounceBody;
+      this.peerCaps.set(encodeKey(inner.sender.pubkey), {
+        pv: body.pv,
+        caps: body.caps ?? [],
+      });
+    }
+
     if (inner.type === "ping" || inner.type === "peer_announce") {
       this.registry.upsert(fromPeerId, {
         name: inner.sender.name,
@@ -251,6 +313,8 @@ export function isActionAllowed(role: Role, type: MessageType): boolean {
     case "token_issue":
     case "token_revoke":
       return role === "admin" || role === "moderator";
+    case "admin_grant":
+      return role === "admin";
     case "session_close":
       return role === "admin";
     case "join_request":

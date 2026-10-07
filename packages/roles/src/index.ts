@@ -87,6 +87,8 @@ export function issueDelegationCert(params: IssueDelegationParams): DelegationCe
 export interface TrustContext {
   sessionId: string;
   adminPubKey: Uint8Array;
+  /** Additional admin public keys for multi-admin sessions. */
+  adminPubKeys?: Uint8Array[];
   /** Delegation certs received from the admin (for moderators). */
   delegations?: DelegationCert[];
   now?: number;
@@ -100,7 +102,13 @@ function fail(reason: string): VerifyResult {
   return { ok: false, reason };
 }
 
-/** Verify that a delegation certificate was signed by the admin. */
+/** True when `pubkey` is any admin of the session (primary or granted). */
+export function isAdminKey(pubkey: Uint8Array, ctx: TrustContext): boolean {
+  if (timingSafeEqual(pubkey, ctx.adminPubKey)) return true;
+  return (ctx.adminPubKeys ?? []).some((key) => timingSafeEqual(pubkey, key));
+}
+
+/** Verify that a delegation certificate was signed by an admin. */
 export function verifyDelegationCert(
   cert: DelegationCert,
   ctx: TrustContext,
@@ -109,10 +117,10 @@ export function verifyDelegationCert(
   if (cert.sid !== ctx.sessionId) return fail("delegation session mismatch");
   const now = ctx.now ?? Math.floor(Date.now() / 1000);
   if (cert.expiry <= now) return fail("delegation expired");
-  if (!timingSafeEqual(cert.issuerPubkey, ctx.adminPubKey)) {
+  if (!isAdminKey(cert.issuerPubkey, ctx)) {
     return fail("delegation not issued by admin");
   }
-  const valid = verify(cert.signature, delegationSigningBytes(cert), ctx.adminPubKey);
+  const valid = verify(cert.signature, delegationSigningBytes(cert), cert.issuerPubkey);
   return valid ? OK : fail("bad delegation signature");
 }
 
@@ -120,7 +128,7 @@ export function verifyDelegationCert(
  * Full client-side verification of a role token:
  *  - binds to this session and is unexpired;
  *  - signature valid under the claimed issuer;
- *  - issuer is either the admin or a delegated moderator.
+ *  - issuer is either an admin or a delegated moderator.
  */
 export function verifyRoleToken(token: RoleToken, ctx: TrustContext): VerifyResult {
   if (token.v !== 1) return fail("bad token version");
@@ -128,8 +136,7 @@ export function verifyRoleToken(token: RoleToken, ctx: TrustContext): VerifyResu
   const now = ctx.now ?? Math.floor(Date.now() / 1000);
   if (token.expiry <= now) return fail("token expired");
 
-  const issuerIsAdmin = timingSafeEqual(token.issuer, ctx.adminPubKey);
-  if (issuerIsAdmin) {
+  if (isAdminKey(token.issuer, ctx)) {
     const valid = verify(token.signature, roleTokenSigningBytes(token), token.issuer);
     return valid ? OK : fail("bad admin token signature");
   }

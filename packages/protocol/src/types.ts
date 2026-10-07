@@ -69,6 +69,7 @@ export type MessageType =
   | "join_reject"
   | "token_issue"
   | "token_revoke"
+  | "admin_grant"
   | "session_close"
   | "peer_announce"
   | "peer_leave"
@@ -85,6 +86,7 @@ export const MESSAGE_TYPES: readonly MessageType[] = [
   "join_reject",
   "token_issue",
   "token_revoke",
+  "admin_grant",
   "session_close",
   "peer_announce",
   "peer_leave",
@@ -116,6 +118,7 @@ export type MessageBody =
   | JoinRejectBody
   | TokenIssueBody
   | TokenRevokeBody
+  | AdminGrantBody
   | SessionCloseBody
   | PeerAnnounceBody
   | PeerLeaveBody
@@ -158,6 +161,12 @@ export interface TokenRevokeBody {
   reason?: string;
 }
 
+/** Admin signs in another admin public key (multi-admin sessions). */
+export interface AdminGrantBody {
+  pubkey: Uint8Array;
+  name?: string;
+}
+
 export interface SessionCloseBody {
   reason?: string;
 }
@@ -165,6 +174,10 @@ export interface SessionCloseBody {
 export interface PeerAnnounceBody {
   /** Known peers, used for lightweight peer exchange. */
   peers: Array<{ name: string; pubkey: Uint8Array; role: Role }>;
+  /** Protocol version of the announcer, for version negotiation. */
+  pv?: number;
+  /** Advertised capabilities. */
+  caps?: string[];
 }
 
 export interface PeerLeaveBody {
