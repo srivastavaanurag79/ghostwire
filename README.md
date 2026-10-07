@@ -274,19 +274,32 @@ scope. See [`SECURITY.md`](./SECURITY.md) to report a vulnerability.
 
 ## Roadmap
 
+**Done**
+
 - [x] Monorepo, protocol, crypto, roles, QR, mesh, transports
-- [x] Web PWA with Telegram-style UI, offline service worker, icons
+- [x] Web PWA (Telegram-style UI), offline service worker, install button, update banner, icons
 - [x] End-to-end encrypted chat, roles, approvals, revocation, panic wipe
-- [x] Chunked file sharing with hash verification
-- [x] Optional WebSocket relay (hotspot / admin-as-server mode) with 6-digit PIN joins
-- [x] Vercel deployment + CI
+- [x] Chunked file sharing with hash verification (web + native)
+- [x] WebSocket relay with 6-digit PIN rooms, one-scan relay invites, admin-as-server
+- [x] Hosted relay support (Render blueprint + `NEXT_PUBLIC_RELAY_URL`)
+- [x] Vercel deployment + GitHub Actions CI
+- [x] Compact SDP + URL-based QR invites (scannable; any camera opens them)
+- [x] Reconnection: relay auto-rejoin, disconnect banner, one-tap re-pair
+- [x] Notification center + synthesized sounds (join/leave/request/message) with toggles
+- [x] Mobile-hardened chat (visual viewport/keyboard, safe areas, larger tap targets)
 - [x] Native Expo app: relay + PIN, file sharing, moderation UI
+- [x] Native BLE transport core, GATT central, peripheral/dual-role adapter, camera QR
+- [x] On-phone relay + RFC 6455 WebSocket codec
 - [x] Multi-admin grants, version/capability negotiation, optional chat timing padding
 - [x] Internal security review ([docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md))
-- [ ] Native Bluetooth LE mesh validated on real devices
+
+**Remaining**
+
+- [ ] Native Bluetooth LE mesh validated on real devices (dev build + hardware)
 - [ ] Independent third-party security audit
 - [ ] Split channel: BLE/control + WebRTC/relay for bulk files
-- [ ] Multi-admin sessions
+- [ ] iOS background mesh hardening / Android foreground-service lifecycle
+- [ ] Native parity polish (richer moderation, saved-file management)
 
 ## Legal
 
