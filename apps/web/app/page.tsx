@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { InstallButton } from "@/components/InstallButton";
+import { AndroidDownload } from "@/components/AndroidDownload";
 import { Logo } from "@/components/Logo";
 import { useUi } from "@/lib/store";
 
@@ -69,8 +70,9 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="mt-4">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
             <InstallButton variant="ghost" className="w-full sm:w-auto" />
+            <AndroidDownload className="w-full sm:w-auto" />
           </div>
         </section>
 

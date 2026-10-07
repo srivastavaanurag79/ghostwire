@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { InstallButton } from "@/components/InstallButton";
+import { AndroidDownload } from "@/components/AndroidDownload";
 import { Logo } from "@/components/Logo";
 import { panicWipe } from "@/lib/session";
 import { setSoundEnabled as persistSound } from "@/lib/sound";
@@ -48,8 +49,9 @@ export default function SettingsPage() {
 
       <div className="flex flex-col gap-3">
         <InstallButton variant="primary" className="w-full" />
+        <AndroidDownload className="w-full" />
         <p className="text-xs gw-muted">
-          Install GhostWire as an app for a full-screen, offline-capable experience.
+          Install GhostWire as a PWA, or download the Android app for Bluetooth mesh support.
         </p>
       </div>
 
