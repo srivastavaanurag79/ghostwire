@@ -4,7 +4,6 @@ import {
   Image,
   Linking,
   Modal,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,7 +12,8 @@ import {
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import type { Role } from "@ghostwire/protocol";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import type { ChatMessage, Role } from "@ghostwire/protocol";
 import { NativeSession } from "./src/session";
 import { InviteQR } from "./src/components/InviteQR";
 import { QrScanner } from "./src/components/QrScanner";
@@ -22,7 +22,38 @@ const session = new NativeSession();
 const DEFAULT_RELAY = "ws://192.168.1.10:8787";
 const WEB_URL = "https://qrghostwire.vercel.app";
 
-export default function App() {
+const ROLE_COLOR: Record<Role, string> = {
+  admin: "#8774e1",
+  moderator: "#2aabee",
+  speaker: "#4fbe87",
+  listener: "#94a3b8",
+};
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+}
+
+function hue(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
+  return h;
+}
+
+function timeOf(ts: number): string {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function App() {
+  return (
+    <SafeAreaProvider>
+      <Main />
+    </SafeAreaProvider>
+  );
+}
+
+function Main() {
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const [name, setName] = useState("");
   const [relay, setRelay] = useState(DEFAULT_RELAY);
@@ -39,23 +70,27 @@ export default function App() {
 
   const canSpeak = state.role === "admin" || state.role === "moderator" || state.role === "speaker";
 
-  // Android back gesture/button should navigate inside the app, not exit it.
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       if (scanning) {
         setScanning(false);
         return true;
       }
+      if (help) {
+        setHelp(false);
+        return true;
+      }
       if (mode !== "home") {
         setMode("home");
         return true;
       }
-      // Stay in an active session rather than closing the app.
       if (state.screen === "active") return true;
       return false;
     });
     return () => subscription.remove();
-  }, [scanning, mode, state.screen]);
+  }, [scanning, help, mode, state.screen]);
+
+  const messages = useMemo(() => state.messages, [state.messages]);
 
   async function run(action: () => Promise<void>) {
     setError(null);
@@ -71,374 +106,357 @@ export default function App() {
 
   if (state.screen === "active") {
     return (
-      <SafeAreaView style={styles.screen}>
+      <>
         <StatusBar style="light" />
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>GhostWire</Text>
-            <Text style={styles.subtitle}>
-              {state.transport === "ble" ? "Bluetooth mesh" : state.role} ·{" "}
-              {state.peers.length + 1} connected
-              {state.isHost && state.pin ? ` · PIN ${state.pin}` : ""}
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.danger} onPress={() => session.panicWipe()}>
-            <Text style={styles.dangerText}>Wipe</Text>
-          </TouchableOpacity>
-        </View>
+        <View style={styles.screen}>
+          <SafeAreaView edges={["top"]} style={styles.headerSafe}>
+            <View style={styles.header}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.headerTitle}>GhostWire</Text>
+                <Text style={styles.headerSub}>
+                  {state.role}
+                  {state.isHost && state.pin ? ` · PIN ${state.pin}` : ""} · {state.peers.length + 1}{" "}
+                  connected
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.headerBtn} onPress={() => setHelp(true)}>
+                <Text style={styles.headerBtnText}>?</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.headerBtn, styles.wipeBtn]}
+                onPress={() => session.panicWipe()}
+              >
+                <Text style={styles.wipeText}>Wipe</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
 
-        {state.transport === "ble" && state.bleQr && (
-          <View style={styles.bleBox}>
-            <Text style={styles.bleTitle}>Bluetooth invite — show this QR</Text>
-            <InviteQR value={state.bleQr} size={220} />
-            <Text style={styles.bleHint}>
-              One QR only — BLE needs no answer handshake. Nearby devices scan it to join.
-            </Text>
-          </View>
-        )}
+          {state.transport === "ble" && state.bleQr && (
+            <View style={styles.bleBox}>
+              <Text style={styles.bleTitle}>Bluetooth invite</Text>
+              <InviteQR value={state.bleQr} size={200} />
+            </View>
+          )}
 
-        {state.isHost && state.joinRequests.length > 0 && (
-          <View style={styles.requests}>
-            {state.joinRequests.map((req) => (
-              <View key={req.peerId} style={styles.requestRow}>
-                <Text style={styles.requestName}>{req.name} wants to join</Text>
-                <View style={styles.requestActions}>
-                  {(["listener", "speaker", "moderator"] as Role[]).map((role) => (
+          {state.isHost && state.joinRequests.length > 0 && (
+            <View style={styles.requests}>
+              {state.joinRequests.map((req) => (
+                <View key={req.peerId} style={styles.requestRow}>
+                  <Text style={styles.requestName}>{req.name} wants to join</Text>
+                  <View style={styles.requestActions}>
+                    {(["listener", "speaker", "moderator"] as Role[]).map((role) => (
+                      <TouchableOpacity
+                        key={role}
+                        style={[styles.chip, { backgroundColor: ROLE_COLOR[role] }]}
+                        onPress={() => session.approve(req.peerId, role)}
+                      >
+                        <Text style={styles.chipText}>{role}</Text>
+                      </TouchableOpacity>
+                    ))}
                     <TouchableOpacity
-                      key={role}
-                      style={styles.smallButton}
-                      onPress={() => session.approve(req.peerId, role)}
+                      style={[styles.chip, styles.chipGhost]}
+                      onPress={() => session.reject(req.peerId)}
                     >
-                      <Text style={styles.smallButtonText}>{role}</Text>
+                      <Text style={styles.chipText}>decline</Text>
                     </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={styles.declineButton}
-                    onPress={() => session.reject(req.peerId)}
-                  >
-                    <Text style={styles.smallButtonText}>decline</Text>
-                  </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))}
-          </View>
-        )}
+              ))}
+            </View>
+          )}
 
-        {state.peers.length > 0 && (
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.people}
-            contentContainerStyle={styles.peopleContent}
+            style={styles.messages}
+            contentContainerStyle={styles.messagesContent}
+            keyboardShouldPersistTaps="handled"
           >
-            {state.peers.map((peer) => (
-              <View key={peer.id} style={styles.person}>
-                <Text style={styles.personName}>{peer.name}</Text>
-                <Text style={styles.personRole}>{peer.role}</Text>
-                {(state.role === "admin" || state.role === "moderator") && peer.role !== "admin" && (
-                  <TouchableOpacity onPress={() => session.revoke(peer.pubkey)}>
-                    <Text style={styles.revokeText}>revoke</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+            {messages.map((m) => (
+              <Bubble key={m.id} message={m} mine={!m.isSystem && m.name === state.name} />
             ))}
           </ScrollView>
-        )}
 
-        <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent}>
-          {state.messages.map((m) => (
-            <View
-              key={m.id}
-              style={[
-                styles.bubble,
-                m.isSystem ? styles.systemBubble : m.name === state.name ? styles.outBubble : styles.inBubble,
-              ]}
-            >
-              {!m.isSystem && m.name !== state.name && (
-                <Text style={styles.bubbleName}>{m.name}</Text>
-              )}
-              <Text style={m.isSystem ? styles.systemText : styles.bubbleText}>{m.content}</Text>
+          <SafeAreaView edges={["bottom"]} style={styles.composerSafe}>
+            <View style={styles.composer}>
+              <TouchableOpacity
+                style={[styles.attach, !canSpeak && styles.disabled]}
+                disabled={!canSpeak}
+                onPress={() =>
+                  void session.sendFile().catch((e) =>
+                    setError(e instanceof Error ? e.message : "Could not send the file"),
+                  )
+                }
+              >
+                <Text style={styles.attachText}>📎</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                value={text}
+                onChangeText={setText}
+                editable={canSpeak}
+                placeholder={canSpeak ? "Message" : "Listener (read only)"}
+                placeholderTextColor="#7f91a4"
+                multiline
+              />
+              <TouchableOpacity
+                style={[styles.send, !canSpeak && styles.disabled]}
+                disabled={!canSpeak}
+                onPress={() => {
+                  session.send(text);
+                  setText("");
+                }}
+              >
+                <Text style={styles.sendText}>➤</Text>
+              </TouchableOpacity>
             </View>
-          ))}
-        </ScrollView>
-
-        {state.transfers.length > 0 && (
-          <View style={styles.transfers}>
-            {state.transfers.slice(0, 3).map((t) => (
-              <View key={t.id} style={styles.transferRow}>
-                <Text style={styles.transferName} numberOfLines={1}>
-                  {t.direction === "in" ? "↓ " : "↑ "}
-                  {t.name}
-                </Text>
-                <Text style={styles.transferMeta}>
-                  {t.status === "done" ? (t.direction === "in" ? "received" : "sent") : `${t.progress}%`}
-                </Text>
-                {t.direction === "in" && t.status === "done" && (
-                  <TouchableOpacity onPress={() => void session.shareFile(t.id)} style={styles.shareBtn}>
-                    <Text style={styles.shareText}>Save</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View style={styles.composer}>
-          <TouchableOpacity
-            style={[styles.attach, !canSpeak && styles.disabled]}
-            disabled={!canSpeak}
-            onPress={() =>
-              void session.sendFile().catch((e) =>
-                setError(e instanceof Error ? e.message : "Could not send the file"),
-              )
-            }
-          >
-            <Text style={styles.attachText}>📎</Text>
-          </TouchableOpacity>
-          <TextInput
-            style={styles.input}
-            value={text}
-            onChangeText={setText}
-            editable={canSpeak}
-            placeholder={canSpeak ? "Encrypted message…" : "Listener (read only)"}
-            placeholderTextColor="#7f91a4"
-          />
-          <TouchableOpacity
-            style={[styles.send, !canSpeak && styles.disabled]}
-            disabled={!canSpeak}
-            onPress={() => {
-              session.send(text);
-              setText("");
-            }}
-          >
-            <Text style={styles.sendText}>Send</Text>
-          </TouchableOpacity>
+            {error && <Text style={styles.errorInline}>{error}</Text>}
+          </SafeAreaView>
         </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="light" />
-      <ScrollView contentContainerStyle={styles.homeContent}>
-        <Image source={require("./assets/icon.png")} style={styles.logoImage} />
-        <Text style={styles.logo}>GhostWire</Text>
-        <Text style={styles.tagline}>
-          Serverless, ephemeral, encrypted mesh chat. No accounts. Nothing stored.
-        </Text>
-
-        {error && <Text style={styles.error}>{error}</Text>}
-
-        {mode === "home" && (
-          <>
-            <TouchableOpacity style={styles.primary} onPress={() => setMode("create")}>
-              <Text style={styles.primaryText}>Create a session (relay + PIN)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondary} onPress={() => setMode("hostphone")}>
-              <Text style={styles.secondaryText}>Host on this phone (no computer)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondary} onPress={() => setMode("join")}>
-              <Text style={styles.secondaryText}>Join with a PIN</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondary} onPress={() => setMode("ble")}>
-              <Text style={styles.secondaryText}>Start Bluetooth mesh (no internet)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondary} onPress={() => setMode("blejoin")}>
-              <Text style={styles.secondaryText}>Join with a QR / invite</Text>
-            </TouchableOpacity>
-            <View style={styles.homeLinks}>
-              <TouchableOpacity onPress={() => setHelp(true)}>
-                <Text style={styles.linkText}>How to use GhostWire</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => void Linking.openURL(WEB_URL)}>
-                <Text style={styles.linkText}>Open web version in browser</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.note}>
-              Relay + PIN needs a meeting point (a relay on a computer or hosted). The Bluetooth mesh
-              needs no internet, no hotspot and no relay — one QR to join. BLE is in progress and
-              needs a development build.
-            </Text>
-          </>
-        )}
-
-        {mode !== "home" && (
-          <>
-            <Text style={styles.label}>Display name</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Field team 2"
-              placeholderTextColor="#7f91a4"
-            />
-
-            {(mode === "create" || mode === "join") && (
-              <>
-                <Text style={styles.label}>Relay URL</Text>
-                <TextInput
-                  style={styles.input}
-                  value={relay}
-                  onChangeText={setRelay}
-                  autoCapitalize="none"
-                  placeholder="ws://192.168.1.10:8787"
-                  placeholderTextColor="#7f91a4"
-                />
-              </>
-            )}
-
-            {mode === "join" && (
-              <>
-                <Text style={styles.label}>Session PIN</Text>
-                <TextInput
-                  style={[styles.input, styles.pinInput]}
-                  value={pin}
-                  onChangeText={(v) => setPin(v.replace(/\D/g, "").slice(0, 8))}
-                  keyboardType="number-pad"
-                  placeholder="6-digit PIN"
-                  placeholderTextColor="#7f91a4"
-                />
-              </>
-            )}
-
-            {mode === "blejoin" && (
-              <>
-                <Text style={styles.label}>Invite (QR or pasted link)</Text>
-                <TextInput
-                  style={[styles.input, styles.multiline]}
-                  value={blePayload}
-                  onChangeText={setBlePayload}
-                  multiline
-                  autoCapitalize="none"
-                  placeholder="Paste a GW1:… invite link"
-                  placeholderTextColor="#7f91a4"
-                />
-                <TouchableOpacity style={styles.secondary} onPress={() => setScanning(true)}>
-                  <Text style={styles.secondaryText}>Scan invite QR with camera</Text>
-                </TouchableOpacity>
-                <Text style={styles.note}>
-                  Scan a host's relay invite to join over WebSockets, or a Bluetooth invite to join
-                  the mesh.
-                </Text>
-              </>
-            )}
-
-            <TouchableOpacity
-              style={[styles.primary, busy && styles.disabled]}
-              disabled={busy}
-              onPress={() =>
-                run(() => {
-                  if (mode === "create") return session.createRelay(name, relay.trim());
-                  if (mode === "join") return session.joinRelay(name, relay.trim(), pin.trim());
-                  if (mode === "hostphone") return session.hostOnPhone(name);
-                  if (mode === "ble") return session.createBle(name).then(() => undefined);
-                  return session.joinFromQr(blePayload.trim(), name);
-                })
-              }
-            >
-              <Text style={styles.primaryText}>
-                {busy
-                  ? "Connecting…"
-                  : mode === "create"
-                    ? "Open session"
-                    : mode === "hostphone"
-                      ? "Start hosting"
-                      : mode === "join"
-                        ? "Join session"
-                        : mode === "ble"
-                          ? "Start mesh"
-                          : "Join mesh"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondary} onPress={() => setMode("home")}>
-              <Text style={styles.secondaryText}>Back</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </ScrollView>
-      {scanning && (
+        <HelpModal visible={help} onClose={() => setHelp(false)} />
         <QrScanner
+          visible={scanning}
           onResult={(data) => {
             setScanning(false);
             void run(() => session.joinFromQr(data, name));
           }}
           onClose={() => setScanning(false)}
         />
-      )}
+      </>
+    );
+  }
 
-      <Modal visible={help} animationType="slide" onRequestClose={() => setHelp(false)}>
-        <SafeAreaView style={styles.screen}>
+  return (
+    <>
+      <StatusBar style="light" />
+      <View style={styles.screen}>
+        <SafeAreaView edges={["top", "bottom"]} style={styles.homeSafe}>
+          <ScrollView contentContainerStyle={styles.homeContent}>
+            <Image source={require("./assets/icon.png")} style={styles.logoImage} />
+            <Text style={styles.logo}>GhostWire</Text>
+            <Text style={styles.tagline}>
+              Serverless, ephemeral, encrypted mesh chat. No accounts. Nothing stored.
+            </Text>
+
+            {error && <Text style={styles.error}>{error}</Text>}
+
+            {mode === "home" && (
+              <>
+                <TouchableOpacity style={styles.primary} onPress={() => setMode("create")}>
+                  <Text style={styles.primaryText}>Create a session (relay + PIN)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondary} onPress={() => setMode("hostphone")}>
+                  <Text style={styles.secondaryText}>Host on this phone (no computer)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondary} onPress={() => setMode("join")}>
+                  <Text style={styles.secondaryText}>Join with a PIN</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondary} onPress={() => setMode("ble")}>
+                  <Text style={styles.secondaryText}>Start Bluetooth mesh</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondary} onPress={() => setMode("blejoin")}>
+                  <Text style={styles.secondaryText}>Join with a QR / invite</Text>
+                </TouchableOpacity>
+                <View style={styles.homeLinks}>
+                  <TouchableOpacity onPress={() => setHelp(true)}>
+                    <Text style={styles.linkText}>How to use GhostWire</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void Linking.openURL(WEB_URL)}>
+                    <Text style={styles.linkText}>Open web version in browser</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {mode !== "home" && (
+              <>
+                <Text style={styles.label}>Display name</Text>
+                <TextInput
+                  style={styles.inputSingle}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. Field team 2"
+                  placeholderTextColor="#7f91a4"
+                />
+
+                {(mode === "create" || mode === "join") && (
+                  <>
+                    <Text style={styles.label}>Relay URL</Text>
+                    <TextInput
+                      style={styles.inputSingle}
+                      value={relay}
+                      onChangeText={setRelay}
+                      autoCapitalize="none"
+                      placeholder="ws://192.168.1.10:8787"
+                      placeholderTextColor="#7f91a4"
+                    />
+                  </>
+                )}
+
+                {mode === "join" && (
+                  <>
+                    <Text style={styles.label}>Session PIN</Text>
+                    <TextInput
+                      style={[styles.inputSingle, styles.pinInput]}
+                      value={pin}
+                      onChangeText={(v) => setPin(v.replace(/\D/g, "").slice(0, 8))}
+                      keyboardType="number-pad"
+                      placeholder="6-digit PIN"
+                      placeholderTextColor="#7f91a4"
+                    />
+                  </>
+                )}
+
+                {mode === "blejoin" && (
+                  <>
+                    <Text style={styles.label}>Invite (QR or pasted link)</Text>
+                    <TextInput
+                      style={[styles.inputSingle, styles.multiline]}
+                      value={blePayload}
+                      onChangeText={setBlePayload}
+                      multiline
+                      autoCapitalize="none"
+                      placeholder="Paste a GW1:… invite link"
+                      placeholderTextColor="#7f91a4"
+                    />
+                    <TouchableOpacity style={styles.secondary} onPress={() => setScanning(true)}>
+                      <Text style={styles.secondaryText}>Scan invite QR with camera</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.primary, busy && styles.disabled]}
+                  disabled={busy}
+                  onPress={() =>
+                    run(() => {
+                      if (mode === "create") return session.createRelay(name, relay.trim());
+                      if (mode === "join") return session.joinRelay(name, relay.trim(), pin.trim());
+                      if (mode === "hostphone") return session.hostOnPhone(name);
+                      if (mode === "ble") return session.createBle(name).then(() => undefined);
+                      return session.joinFromQr(blePayload.trim(), name);
+                    })
+                  }
+                >
+                  <Text style={styles.primaryText}>
+                    {busy
+                      ? "Connecting…"
+                      : mode === "create"
+                        ? "Open session"
+                        : mode === "hostphone"
+                          ? "Start hosting"
+                          : mode === "join"
+                            ? "Join session"
+                            : mode === "ble"
+                              ? "Start mesh"
+                              : "Join session"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondary} onPress={() => setMode("home")}>
+                  <Text style={styles.secondaryText}>Back</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+      <HelpModal visible={help} onClose={() => setHelp(false)} />
+      <QrScanner
+        visible={scanning}
+        onResult={(data) => {
+          setScanning(false);
+          void run(() => session.joinFromQr(data, name));
+        }}
+        onClose={() => setScanning(false)}
+      />
+    </>
+  );
+}
+
+function Bubble({ message, mine }: { message: ChatMessage; mine: boolean }) {
+  if (message.isSystem) {
+    return <Text style={styles.systemText}>{message.content}</Text>;
+  }
+  const color = ROLE_COLOR[message.role];
+  return (
+    <View style={[styles.bubbleRow, mine ? styles.rowMine : styles.rowTheirs]}>
+      {!mine && (
+        <View style={[styles.avatar, { backgroundColor: `hsl(${hue(message.name)} 60% 42%)` }]}>
+          <Text style={styles.avatarText}>{initials(message.name)}</Text>
+        </View>
+      )}
+      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
+        {!mine && (
+          <Text style={[styles.bubbleName, { color }]}>
+            {message.name}
+            <Text style={styles.bubbleRole}> {message.role}</Text>
+          </Text>
+        )}
+        <Text style={styles.bubbleText}>{message.content}</Text>
+        <Text style={styles.bubbleTime}>{timeOf(message.ts)}</Text>
+      </View>
+    </View>
+  );
+}
+
+function HelpModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.screen}>
+        <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1 }}>
           <View style={styles.header}>
-            <Text style={styles.title}>How to use GhostWire</Text>
-            <TouchableOpacity onPress={() => setHelp(false)}>
-              <Text style={styles.linkText}>Close</Text>
+            <Text style={styles.headerTitle}>How to use GhostWire</Text>
+            <TouchableOpacity onPress={onClose} style={styles.headerBtn}>
+              <Text style={styles.headerBtnText}>✕</Text>
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.helpContent}>
             <Text style={styles.helpH}>What it is</Text>
             <Text style={styles.helpP}>
-              A private group chat that needs no account and keeps nothing. Messages are encrypted
-              and live only in memory. When the session ends, they are gone.
+              A private group chat with no account that keeps nothing. Messages are encrypted and
+              live only in memory; when the session ends they are gone.
             </Text>
-
-            <Text style={styles.helpH}>Relay + 6-digit PIN (easiest)</Text>
+            <Text style={styles.helpH}>Host on this phone (no computer)</Text>
             <Text style={styles.helpP}>
-              1. The host taps “Host on this phone” (or “Create a session (relay + PIN)” with a relay
-              URL).{"\n"}
-              2. The host shares the 6-digit PIN.{"\n"}
-              3. Everyone else taps “Join with a PIN”, enters the relay URL and the PIN.{"\n"}
-              No second QR and no camera needed. Works on the same Wi‑Fi/hotspot, even with no
-              internet, or over the internet if the relay is hosted.
+              Tap it, and you get a 6-digit PIN. Others on the same Wi‑Fi type{" "}
+              <Text style={styles.b}>Join with a PIN</Text> and enter the relay URL shown by the host
+              (“ws://&lt;this phone's IP&gt;:8787”) plus the PIN.
             </Text>
-
-            <Text style={styles.helpH}>Bluetooth mesh (no internet at all)</Text>
+            <Text style={styles.helpH}>Create a session (relay + PIN)</Text>
             <Text style={styles.helpP}>
-              1. The host taps “Start Bluetooth mesh” and shows the invite QR.{"\n"}
-              2. Another phone taps “Join Bluetooth mesh” and scans it.{"\n"}
-              Only one QR — Bluetooth needs no reply handshake. This needs two physical phones; an
-              emulator has no Bluetooth radio.
+              Same, but the host uses a relay on a computer or a hosted relay URL.
             </Text>
-
-            <Text style={styles.helpH}>Direct QR over a hotspot</Text>
+            <Text style={styles.helpH}>Bluetooth mesh (no internet)</Text>
             <Text style={styles.helpP}>
-              On the web app, one phone shares its hotspot and others join with a two-scan QR. See
-              the web version for step-by-step instructions.
+              Not available in this build yet; it needs two physical phones and a BLE peripheral
+              module we’re still wiring up.
             </Text>
-
             <Text style={styles.helpH}>Roles</Text>
             <Text style={styles.helpP}>
-              The host is the admin and can approve or decline joiners and revoke people. Moderators
-              can help approve. Speakers can send messages; listeners can only read.
+              Host = admin (approves/declines and revokes). Moderators help approve. Speakers can
+              send; listeners read only.
             </Text>
-
             <Text style={styles.helpH}>Staying safe</Text>
             <Text style={styles.helpP}>
-              Only invite people you trust. If a phone is compromised while a session is open, that
-              device can be read — no app can prevent that. Use “Wipe” to erase everything.
+              Invite only people you trust. Use “Wipe” to erase everything from the device.
             </Text>
-
-            <TouchableOpacity
-              style={styles.primary}
-              onPress={() => void Linking.openURL(WEB_URL)}
-            >
+            <TouchableOpacity style={styles.primary} onPress={() => void Linking.openURL(WEB_URL)}>
               <Text style={styles.primaryText}>Open web version</Text>
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#0e1621" },
-  homeContent: { padding: 24, gap: 12, flexGrow: 1, justifyContent: "center" },
-  logo: { color: "#fff", fontSize: 34, fontWeight: "700", textAlign: "center" },
+  homeSafe: { flex: 1 },
+  homeContent: { padding: 24, gap: 10, flexGrow: 1, justifyContent: "center" },
   logoImage: { width: 96, height: 96, borderRadius: 24, alignSelf: "center", marginBottom: 4 },
-  tagline: { color: "#8aa0b4", fontSize: 15, textAlign: "center", marginBottom: 12, lineHeight: 22 },
-  label: { color: "#fff", fontSize: 13, fontWeight: "600", marginTop: 8 },
-  input: {
+  logo: { color: "#fff", fontSize: 32, fontWeight: "700", textAlign: "center" },
+  tagline: { color: "#8aa0b4", fontSize: 14, textAlign: "center", marginBottom: 14, lineHeight: 20 },
+  label: { color: "#c8d3de", fontSize: 13, fontWeight: "600", marginTop: 8 },
+  inputSingle: {
     backgroundColor: "#17212b",
     borderRadius: 12,
     borderColor: "#24313f",
@@ -446,89 +464,97 @@ const styles = StyleSheet.create({
     color: "#fff",
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: 16,
   },
-  pinInput: { textAlign: "center", fontSize: 24, letterSpacing: 6 },
-  multiline: { minHeight: 80, textAlignVertical: "top" },
-  bleBox: {
-    backgroundColor: "#132a1f",
-    borderColor: "#2f6b4a",
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    margin: 12,
-    gap: 6,
-  },
-  bleTitle: { color: "#7fe0a8", fontSize: 13, fontWeight: "700" },
-  blePayload: { color: "#cfe9dc", fontSize: 11 },
-  bleHint: { color: "#7fae95", fontSize: 11 },
-  primary: { backgroundColor: "#2aabee", borderRadius: 14, paddingVertical: 16, alignItems: "center", marginTop: 8 },
+  multiline: { minHeight: 76, textAlignVertical: "top" },
+  pinInput: { textAlign: "center", fontSize: 22, letterSpacing: 5 },
+  primary: { backgroundColor: "#2aabee", borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 6 },
   primaryText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  secondary: { borderColor: "#24313f", borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: "center" },
+  secondary: { borderColor: "#24313f", borderWidth: 1, borderRadius: 14, paddingVertical: 13, alignItems: "center" },
   secondaryText: { color: "#c8d3de", fontSize: 15, fontWeight: "600" },
-  note: { color: "#7f91a4", fontSize: 12, lineHeight: 18, marginTop: 12 },
-  error: { color: "#ff8f8f", fontSize: 13 },
+  homeLinks: { marginTop: 14, gap: 10, alignItems: "center" },
+  linkText: { color: "#5fb0e8", fontSize: 14, fontWeight: "600" },
+  error: { color: "#ff8f8f", fontSize: 13, textAlign: "center" },
+  errorInline: { color: "#ff8f8f", fontSize: 12, paddingHorizontal: 12, paddingBottom: 6 },
   disabled: { opacity: 0.5 },
+
+  headerSafe: { backgroundColor: "#17212b" },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "#17212b",
     borderBottomColor: "#24313f",
     borderBottomWidth: 1,
   },
-  title: { color: "#fff", fontSize: 18, fontWeight: "700" },
-  subtitle: { color: "#7f91a4", fontSize: 12, marginTop: 2 },
-  danger: { borderColor: "#e17076", borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
-  dangerText: { color: "#e17076", fontSize: 12, fontWeight: "600" },
-  requests: { padding: 12, gap: 8, borderBottomColor: "#24313f", borderBottomWidth: 1 },
+  headerTitle: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  headerSub: { color: "#7f91a4", fontSize: 12, marginTop: 2 },
+  headerBtn: {
+    minWidth: 34,
+    height: 34,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  headerBtnText: { color: "#c8d3de", fontSize: 15, fontWeight: "700" },
+  wipeBtn: { backgroundColor: "rgba(225,112,118,0.15)" },
+  wipeText: { color: "#e17076", fontSize: 12, fontWeight: "700" },
+
+  bleBox: { padding: 12, alignItems: "center", gap: 6 },
+  bleTitle: { color: "#7fe0a8", fontSize: 13, fontWeight: "700" },
+
+  requests: { padding: 10, gap: 8, borderBottomColor: "#24313f", borderBottomWidth: 1 },
   requestRow: { backgroundColor: "#1c2733", borderRadius: 12, padding: 12, gap: 8 },
   requestName: { color: "#fff", fontSize: 13 },
-  requestActions: { flexDirection: "row", gap: 8 },
-  smallButton: { backgroundColor: "#2aabee", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  smallButtonText: { color: "#fff", fontSize: 11, fontWeight: "600" },
+  requestActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  chipGhost: { backgroundColor: "#33404f" },
+  chipText: { color: "#fff", fontSize: 11, fontWeight: "700" },
+
   messages: { flex: 1 },
-  messagesContent: { padding: 12, gap: 6 },
-  bubble: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, maxWidth: "85%" },
-  inBubble: { backgroundColor: "#182533", alignSelf: "flex-start" },
-  outBubble: { backgroundColor: "#2b5278", alignSelf: "flex-end" },
-  systemBubble: { alignSelf: "center", backgroundColor: "transparent" },
-  bubbleName: { color: "#5fb0e8", fontSize: 11, fontWeight: "700", marginBottom: 2 },
-  bubbleText: { color: "#fff", fontSize: 14 },
-  systemText: { color: "#7f91a4", fontSize: 12, fontStyle: "italic" },
-  composer: { flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12, borderTopColor: "#24313f", borderTopWidth: 1 },
-  send: { backgroundColor: "#2aabee", borderRadius: 12, paddingHorizontal: 18, justifyContent: "center" },
-  sendText: { color: "#fff", fontWeight: "700" },
-  attach: { backgroundColor: "#1c2733", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  messagesContent: { padding: 12, gap: 8 },
+  systemText: { color: "#7f91a4", fontSize: 12, fontStyle: "italic", textAlign: "center", marginVertical: 6 },
+
+  bubbleRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, maxWidth: "100%" },
+  rowTheirs: { justifyContent: "flex-start" },
+  rowMine: { justifyContent: "flex-end" },
+  avatar: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  avatarText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  bubble: { maxWidth: "78%", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
+  bubbleTheirs: { backgroundColor: "#182533", borderTopLeftRadius: 4 },
+  bubbleMine: { backgroundColor: "#2b5278", borderTopRightRadius: 4 },
+  bubbleName: { fontSize: 12, fontWeight: "700", marginBottom: 2 },
+  bubbleRole: { color: "#7f91a4", fontSize: 10, fontWeight: "600" },
+  bubbleText: { color: "#fff", fontSize: 15, lineHeight: 21 },
+  bubbleTime: { color: "rgba(255,255,255,0.5)", fontSize: 10, alignSelf: "flex-end", marginTop: 3 },
+
+  composerSafe: { backgroundColor: "#17212b", borderTopColor: "#24313f", borderTopWidth: 1 },
+  composer: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  attach: { backgroundColor: "#1c2733", borderRadius: 22, width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   attachText: { fontSize: 18 },
-  declineButton: {
-    backgroundColor: "#3a2a2f",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  people: { borderBottomColor: "#24313f", borderBottomWidth: 1, maxHeight: 76 },
-  peopleContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 8, flexDirection: "row" },
-  person: {
+  input: {
+    flex: 1,
+    maxHeight: 120,
+    minHeight: 44,
     backgroundColor: "#1c2733",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minWidth: 90,
-    gap: 2,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingTop: 11,
+    paddingBottom: 11,
+    color: "#fff",
+    fontSize: 16,
   },
-  personName: { color: "#fff", fontSize: 13, fontWeight: "600" },
-  personRole: { color: "#7f91a4", fontSize: 11 },
-  revokeText: { color: "#e17076", fontSize: 11, marginTop: 2 },
-  transfers: { paddingHorizontal: 12, paddingTop: 8, gap: 4 },
-  transferRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  transferName: { color: "#c8d3de", fontSize: 12, flex: 1 },
-  transferMeta: { color: "#7f91a4", fontSize: 11 },
-  shareBtn: { backgroundColor: "#2aabee", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  shareText: { color: "#fff", fontSize: 11, fontWeight: "600" },
-  homeLinks: { marginTop: 16, gap: 10, alignItems: "center" },
-  linkText: { color: "#5fb0e8", fontSize: 14, fontWeight: "600" },
-  helpContent: { padding: 20, gap: 6, paddingBottom: 48 },
+  send: { backgroundColor: "#2aabee", borderRadius: 22, width: 48, height: 44, alignItems: "center", justifyContent: "center" },
+  sendText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+
+  helpContent: { padding: 20, gap: 4, paddingBottom: 40 },
   helpH: { color: "#fff", fontSize: 15, fontWeight: "700", marginTop: 14 },
   helpP: { color: "#c8d3de", fontSize: 14, lineHeight: 21 },
+  b: { fontWeight: "700", color: "#fff" },
 });
+
+export default App;
