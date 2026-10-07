@@ -11,7 +11,7 @@ crypto, roles and mesh packages as the web app.
 | Relay + 6-digit PIN join (same relay as web) | ✅ working |
 | Roles, approvals, revocation, panic wipe | ✅ working |
 | Chat UI (Telegram-style, dark) | ✅ working |
-| Bluetooth LE transport core (framing, reassembly, adapter contract) | ✅ implemented |
+| Bluetooth LE transport core (framing, reassembly, adapter contract) | ✅ implemented + CI tests (fake adapter) |
 | BLE session create/join wired into the app | ✅ implemented |
 | BLE GATT central (react-native-ble-plx: scan/connect/notify/write) | ✅ implemented |
 | Camera QR: invite render + scan | ✅ implemented |
