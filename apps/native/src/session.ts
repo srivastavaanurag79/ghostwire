@@ -407,7 +407,14 @@ export class NativeSession {
    * to it over localhost. Others on the same Wi-Fi/hotspot join with the PIN.
    */
   hostOnPhone = async (name: string): Promise<void> => {
-    const relay = await startLocalRelay({ port: 8787 });
+    let relay: LocalRelayHandle;
+    try {
+      relay = await startLocalRelay({ port: 8787 });
+    } catch {
+      throw new Error(
+        "Hosting on this phone isn't available in this build yet. Use “Create a session (relay + PIN)” with a relay URL instead.",
+      );
+    }
     try {
       await this.openRelaySession(name, `ws://127.0.0.1:${relay.port}`, { host: true });
     } catch (e) {
@@ -426,6 +433,16 @@ export class NativeSession {
    * because BLE has no offer/answer handshake.
    */
   createBle = async (name: string): Promise<string> => {
+    try {
+      return await this.createBleInternal(name);
+    } catch {
+      throw new Error(
+        "Bluetooth mesh isn't available in this build yet. Use Relay + PIN over your Wi‑Fi/hotspot instead.",
+      );
+    }
+  };
+
+  private createBleInternal = async (name: string): Promise<string> => {
     this.teardown();
     const sessionId = randomUUID();
     const sessionKey = randomBytes(32);
@@ -504,6 +521,16 @@ export class NativeSession {
 
   /** Join a mesh from a scanned/imported invite payload. */
   joinBle = async (payloadText: string, name: string): Promise<void> => {
+    try {
+      await this.joinBleInternal(payloadText, name);
+    } catch {
+      throw new Error(
+        "Bluetooth mesh isn't available in this build yet. Use Relay + PIN over your Wi‑Fi/hotspot instead.",
+      );
+    }
+  };
+
+  private joinBleInternal = async (payloadText: string, name: string): Promise<void> => {
     this.teardown();
     const payload = decodeQRPayload(payloadText.trim());
     const displayName = name.trim() || "Guest";
