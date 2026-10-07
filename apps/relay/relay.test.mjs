@@ -114,3 +114,28 @@ test("relay supports directed frames within a room", async () => {
   b.close();
   await relay.close();
 });
+
+test("relay rate-limits room control attempts", async () => {
+  const relay = createRelay({ port: 0, host: "127.0.0.1" });
+  await relay.ready;
+  const socket = new WebSocket(`ws://127.0.0.1:${relay.port}`);
+  await once(socket, "open");
+
+  const errors = [];
+  socket.on("message", (data, isBinary) => {
+    if (isBinary) return;
+    const msg = JSON.parse(data.toString());
+    if (msg.t === "error") errors.push(msg.message);
+  });
+
+  for (let i = 0; i < 25; i++) control(socket, { t: "guest", pin: "000000" });
+  await delay(200);
+
+  assert.ok(
+    errors.some((m) => /Too many/i.test(m)),
+    "expected a rate-limit error after many attempts",
+  );
+
+  socket.close();
+  await relay.close();
+});

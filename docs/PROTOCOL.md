@@ -149,8 +149,9 @@ Moderators can only grant `speaker`/`listener`, and only when their delegation i
 | `join_reject` | `{ reason? }` | Decline a request |
 | `token_issue` | `{ token }` | Change a participant's role |
 | `token_revoke` | `{ revoke: Uint8Array[], reason? }` | Revoke keys |
+| `admin_grant` | `{ pubkey, name? }` | Admin signs in another admin (multi-admin) |
 | `session_close` | `{ reason? }` | Admin ends the session |
-| `peer_announce` | `{ peers[] }` | Presence / lightweight peer exchange |
+| `peer_announce` | `{ peers[], pv?, caps? }` | Presence + protocol version/capabilities |
 | `peer_leave` | `{ reason? }` | Graceful departure |
 | `file_offer` | `{ transferId, name, size, mime, hash }` | Announce a file |
 | `file_accept` | `{ transferId }` | Accept a transfer |
@@ -196,3 +197,16 @@ and the server sends `senderLen(1) || senderId || payload`, plus JSON control fr
 Any incompatible wire change bumps `PROTOCOL_VERSION`. Nodes reject envelopes whose `v` they do not
 support. Backward-compatible additions (new optional fields, new message types) keep the same
 version.
+
+## Multi-admin, capabilities, and timing
+
+- **Multi-admin.** An admin may sign in additional admin public keys with `admin_grant`. Every node
+  treats any key in its admin set as a valid token issuer, so a co-admin can issue roles and grants.
+  A node only accepts `admin_grant` from a sender whose key is already an admin. Grants are ordinary
+  mesh messages (not replayed to late joiners; re-grant if needed).
+- **Version / capability negotiation.** `peer_announce` carries `pv` (protocol version) and `caps`
+  (e.g. `multi-admin`, `msg-jitter`, `relay-rejoin`). Nodes store a peer's advertised capabilities and
+  the UI warns on a version mismatch. Capabilities let a deployment gate optional behaviour instead of
+  breaking older peers.
+- **Optional timing padding.** A node may configure `chatJitterMs` to add a small random delay before
+  broadcasting chat, reducing timing correlation. It defaults to 0 (deterministic; tests rely on it).

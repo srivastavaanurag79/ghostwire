@@ -89,6 +89,24 @@ export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } =
   /** pin -> { config, sockets:Set<WebSocket> } */
   const rooms = new Map();
 
+  // Simple per-IP rate limit on room control frames. A 6-digit PIN has only
+  // ~20 bits of entropy, so without this an attacker on the network could brute
+  // force a PIN and (in PIN-only mode) obtain the session bootstrap.
+  const controlAttempts = new Map();
+  const CONTROL_WINDOW_MS = 60_000;
+  const CONTROL_MAX = 20;
+  function allowControl(ip) {
+    const now = Date.now();
+    const recent = (controlAttempts.get(ip) ?? []).filter((t) => now - t < CONTROL_WINDOW_MS);
+    if (recent.length >= CONTROL_MAX) {
+      controlAttempts.set(ip, recent);
+      return false;
+    }
+    recent.push(now);
+    controlAttempts.set(ip, recent);
+    return true;
+  }
+
   const sendTo = (socket, data, binary = false) => {
     if (socket.readyState === WebSocket.OPEN) socket.send(data, { binary });
   };
@@ -99,9 +117,10 @@ export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } =
     return room ? [...room.sockets].filter((s) => s !== socket) : [];
   };
 
-  wss.on("connection", (socket) => {
+  wss.on("connection", (socket, req) => {
     socket.gwId = nextId();
     socket.gwPin = null;
+    socket.gwIp = req?.socket?.remoteAddress ?? "unknown";
     socket.isAlive = true;
     sendControl(socket, { t: "welcome", id: socket.gwId });
 
@@ -158,6 +177,10 @@ export function createRelay({ port = 8787, host = "0.0.0.0", serveDir = null } =
       return;
     }
     const pin = typeof msg.pin === "string" ? msg.pin : null;
+
+    if ((msg.t === "host" || msg.t === "guest") && !allowControl(socket.gwIp)) {
+      return sendControl(socket, { t: "error", message: "Too many attempts, slow down" });
+    }
 
     if (msg.t === "host") {
       if (!pin) return sendControl(socket, { t: "error", message: "Missing PIN" });

@@ -280,10 +280,12 @@ scope. See [`SECURITY.md`](./SECURITY.md) to report a vulnerability.
 - [x] Chunked file sharing with hash verification
 - [x] Optional WebSocket relay (hotspot / admin-as-server mode) with 6-digit PIN joins
 - [x] Vercel deployment + CI
-- [x] Native Expo app: relay + PIN session engine
-- [ ] Native Bluetooth LE mesh + on-phone relay (no internet, no hotspot)
-- [ ] Independent security audit
-- [ ] Optional message batching to further blunt timing metadata
+- [x] Native Expo app: relay + PIN, file sharing, moderation UI
+- [x] Multi-admin grants, version/capability negotiation, optional chat timing padding
+- [x] Internal security review ([docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md))
+- [ ] Native Bluetooth LE mesh validated on real devices
+- [ ] Independent third-party security audit
+- [ ] Split channel: BLE/control + WebRTC/relay for bulk files
 - [ ] Multi-admin sessions
 
 ## Legal
