@@ -88,10 +88,37 @@ export default function App() {
                       <Text style={styles.smallButtonText}>{role}</Text>
                     </TouchableOpacity>
                   ))}
+                  <TouchableOpacity
+                    style={styles.declineButton}
+                    onPress={() => session.reject(req.peerId)}
+                  >
+                    <Text style={styles.smallButtonText}>decline</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))}
           </View>
+        )}
+
+        {state.peers.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.people}
+            contentContainerStyle={styles.peopleContent}
+          >
+            {state.peers.map((peer) => (
+              <View key={peer.id} style={styles.person}>
+                <Text style={styles.personName}>{peer.name}</Text>
+                <Text style={styles.personRole}>{peer.role}</Text>
+                {(state.role === "admin" || state.role === "moderator") && peer.role !== "admin" && (
+                  <TouchableOpacity onPress={() => session.revoke(peer.pubkey)}>
+                    <Text style={styles.revokeText}>revoke</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </ScrollView>
         )}
 
         <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent}>
@@ -111,7 +138,39 @@ export default function App() {
           ))}
         </ScrollView>
 
+        {state.transfers.length > 0 && (
+          <View style={styles.transfers}>
+            {state.transfers.slice(0, 3).map((t) => (
+              <View key={t.id} style={styles.transferRow}>
+                <Text style={styles.transferName} numberOfLines={1}>
+                  {t.direction === "in" ? "↓ " : "↑ "}
+                  {t.name}
+                </Text>
+                <Text style={styles.transferMeta}>
+                  {t.status === "done" ? (t.direction === "in" ? "received" : "sent") : `${t.progress}%`}
+                </Text>
+                {t.direction === "in" && t.status === "done" && (
+                  <TouchableOpacity onPress={() => void session.shareFile(t.id)} style={styles.shareBtn}>
+                    <Text style={styles.shareText}>Save</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
         <View style={styles.composer}>
+          <TouchableOpacity
+            style={[styles.attach, !canSpeak && styles.disabled]}
+            disabled={!canSpeak}
+            onPress={() =>
+              void session.sendFile().catch((e) =>
+                setError(e instanceof Error ? e.message : "Could not send the file"),
+              )
+            }
+          >
+            <Text style={styles.attachText}>📎</Text>
+          </TouchableOpacity>
           <TextInput
             style={styles.input}
             value={text}
@@ -338,7 +397,34 @@ const styles = StyleSheet.create({
   bubbleName: { color: "#5fb0e8", fontSize: 11, fontWeight: "700", marginBottom: 2 },
   bubbleText: { color: "#fff", fontSize: 14 },
   systemText: { color: "#7f91a4", fontSize: 12, fontStyle: "italic" },
-  composer: { flexDirection: "row", gap: 8, padding: 12, borderTopColor: "#24313f", borderTopWidth: 1 },
+  composer: { flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12, borderTopColor: "#24313f", borderTopWidth: 1 },
   send: { backgroundColor: "#2aabee", borderRadius: 12, paddingHorizontal: 18, justifyContent: "center" },
   sendText: { color: "#fff", fontWeight: "700" },
+  attach: { backgroundColor: "#1c2733", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  attachText: { fontSize: 18 },
+  declineButton: {
+    backgroundColor: "#3a2a2f",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  people: { borderBottomColor: "#24313f", borderBottomWidth: 1, maxHeight: 76 },
+  peopleContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 8, flexDirection: "row" },
+  person: {
+    backgroundColor: "#1c2733",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 90,
+    gap: 2,
+  },
+  personName: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  personRole: { color: "#7f91a4", fontSize: 11 },
+  revokeText: { color: "#e17076", fontSize: 11, marginTop: 2 },
+  transfers: { paddingHorizontal: 12, paddingTop: 8, gap: 4 },
+  transferRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  transferName: { color: "#c8d3de", fontSize: 12, flex: 1 },
+  transferMeta: { color: "#7f91a4", fontSize: 11 },
+  shareBtn: { backgroundColor: "#2aabee", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  shareText: { color: "#fff", fontSize: 11, fontWeight: "600" },
 });

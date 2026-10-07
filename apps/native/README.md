@@ -16,8 +16,18 @@ crypto, roles and mesh packages as the web app.
 | BLE GATT central (react-native-ble-plx: scan/connect/notify/write) | ✅ implemented |
 | Camera QR: invite render + scan | ✅ implemented |
 | On-phone relay (`startLocalRelay`) + WebSocket codec | ✅ implemented |
+| File sharing (pick / chunk / verify / save) | ✅ implemented |
+| Moderation UI (approve / decline / revoke) | ✅ implemented |
 | BLE advertising/peripheral half + dual-role adapter | ✅ implemented |
 | BLE dual-role mesh on real radios | 🚧 needs a dev build + `react-native-ble-peripheral` |
+
+## BLE operational notes (from a design review)
+
+- **Throughput**: ~1–5 KB/s per link after MTU/fragmentation — fine for chat, painful for files. File sharing is optimised for relay/WebRTC; over BLE expect slow transfers.
+- **Roles**: every node advertises and scans (dual-role). Android supports ~7–10 simultaneous links, iOS ~7–8.
+- **Fragmentation**: `[total:1][index:1][payload]` chunks, reassembled per peer in `BleTransport` (GATT writes are ordered/reliable).
+- **Background**: iOS `bluetooth-central`/`bluetooth-peripheral` background modes are declared; Android declares `FOREGROUND_SERVICE_CONNECTED_DEVICE`. Treat real-time mesh as foreground-first.
+- **Future**: split into a small control channel over BLE and a bulk channel over WebRTC/relay for files.
 
 ## Run it
 

@@ -1,6 +1,7 @@
 import {
   fromBase64,
   generateSigningKeyPair,
+  hash,
   randomBytes,
   randomUUID,
   timingSafeEqual,
@@ -10,26 +11,47 @@ import {
 } from "@ghostwire/crypto";
 import { MeshNode, type MeshIdentity } from "@ghostwire/mesh";
 import { canSend, issueDelegationCert, issueRoleToken } from "@ghostwire/roles";
-import type {
-  ChatBody,
-  ChatMessage,
-  DelegationCert,
-  InnerMessage,
-  JoinAcceptBody,
-  JoinRequestBody,
-  MessageBody,
-  MessageType,
-  Peer,
-  Role,
-  RoleToken,
-  TokenIssueBody,
-  TokenRevokeBody,
+import {
+  FILE_CHUNK_BYTES,
+  type ChatBody,
+  type ChatMessage,
+  type DelegationCert,
+  type FileChunkBody,
+  type FileCompleteBody,
+  type FileOfferBody,
+  type InnerMessage,
+  type JoinAcceptBody,
+  type JoinRequestBody,
+  type Peer,
+  type Role,
+  type RoleToken,
+  type TokenRevokeBody,
 } from "@ghostwire/protocol";
 import { WebSocketTransport, type Transport } from "@ghostwire/transport";
 import { decodeQRPayload, encodeQRPayload, type QRPayload } from "@ghostwire/qr";
 import { BleTransport } from "./transports/ble";
 import { createDualRoleAdapter } from "./transports/ble-peripheral";
 import { startLocalRelay, type LocalRelayHandle } from "./server/local-relay";
+
+interface NativeTransfer {
+  id: string;
+  name: string;
+  size: number;
+  progress: number;
+  status: "active" | "done" | "error";
+  direction: "in" | "out";
+  /** local file uri once received */
+  url?: string;
+}
+
+interface IncomingFile {
+  name: string;
+  size: number;
+  mime: string;
+  hash: Uint8Array;
+  chunks: Uint8Array[];
+  received: number;
+}
 
 export interface NativeState {
   screen: "home" | "active";
@@ -41,6 +63,7 @@ export interface NativeState {
   messages: ChatMessage[];
   peers: Peer[];
   joinRequests: Array<{ peerId: string; name: string; pubkey: Uint8Array; requestedRole: Role }>;
+  transfers: NativeTransfer[];
   notice: string | null;
   transport: "relay" | "ble" | null;
   bleQr: string | null;
@@ -61,6 +84,7 @@ interface Runtime {
   transport: Transport;
   mesh: MeshNode;
   pendingJoinPeers: Map<string, { name: string; pubkey: Uint8Array; requestedRole: Role }>;
+  incoming: Map<string, IncomingFile>;
   localRelay?: LocalRelayHandle;
 }
 
@@ -74,6 +98,7 @@ const initialState: NativeState = {
   messages: [],
   peers: [],
   joinRequests: [],
+  transfers: [],
   notice: null,
   transport: null,
   bleQr: null,
@@ -182,6 +207,42 @@ export class NativeSession {
     } else if (inner.type === "session_close") {
       this.system("The session was closed by the admin.");
       this.panicWipe();
+    } else if (inner.type === "file_offer") {
+      const body = inner.body as FileOfferBody;
+      rt.incoming.set(body.transferId, {
+        name: body.name,
+        size: body.size,
+        mime: body.mime,
+        hash: body.hash,
+        chunks: [],
+        received: 0,
+      });
+      this.set({
+        transfers: [
+          {
+            id: body.transferId,
+            name: body.name,
+            size: body.size,
+            progress: 0,
+            status: "active",
+            direction: "in",
+          },
+          ...this.state.transfers,
+        ],
+      });
+      rt.mesh.send("file_accept", { transferId: body.transferId });
+    } else if (inner.type === "file_chunk") {
+      const body = inner.body as FileChunkBody;
+      const file = rt.incoming.get(body.transferId);
+      if (file) {
+        const data = new Uint8Array(body.data);
+        file.chunks[body.index] = data;
+        file.received += data.length;
+        const progress = file.size > 0 ? Math.round((file.received / file.size) * 100) : 0;
+        this.updateTransfer(body.transferId, { progress });
+      }
+    } else if (inner.type === "file_complete") {
+      void this.finishIncomingFile((inner.body as FileCompleteBody).transferId);
     }
 
     this.set({ peers: rt.mesh.peers.list() });
@@ -272,6 +333,7 @@ export class NativeSession {
       transport,
       mesh: null as unknown as MeshNode,
       pendingJoinPeers: new Map(),
+      incoming: new Map(),
     };
 
     runtime.mesh = new MeshNode({
@@ -371,6 +433,7 @@ export class NativeSession {
       transport,
       mesh: null as unknown as MeshNode,
       pendingJoinPeers: new Map(),
+      incoming: new Map(),
     };
     runtime.mesh = new MeshNode({
       transport,
@@ -445,6 +508,7 @@ export class NativeSession {
       transport,
       mesh: null as unknown as MeshNode,
       pendingJoinPeers: new Map(),
+      incoming: new Map(),
     };
     runtime.mesh = new MeshNode({
       transport,
@@ -531,8 +595,128 @@ export class NativeSession {
     const rt = this.runtime;
     if (!rt) return;
     rt.mesh.revoke([pubkey]);
-    rt.mesh.send("token_revoke", { revoke: [pubkey] });
+    rt.mesh.send("token_revoke", { revoke: [pubkey] } satisfies TokenRevokeBody);
     this.set({ peers: rt.mesh.peers.list() });
+  };
+
+  reject = (peerId: string): void => {
+    const rt = this.runtime;
+    if (!rt) return;
+    rt.mesh.send("join_reject", { reason: "declined" });
+    rt.pendingJoinPeers.delete(peerId);
+    this.set({ joinRequests: this.state.joinRequests.filter((r) => r.peerId !== peerId) });
+  };
+
+  private updateTransfer(id: string, patch: Partial<NativeTransfer>): void {
+    this.set({
+      transfers: this.state.transfers.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+    });
+  }
+
+  /** Pick a file and stream it to the session (works over relay and BLE). */
+  sendFile = async (): Promise<void> => {
+    const rt = this.runtime;
+    if (!rt) return;
+    if (!canSend(rt.role)) throw new Error("You cannot send files");
+    const picker = loadExpo<{
+      getDocumentAsync: (o: unknown) => Promise<{ canceled: boolean; assets?: Array<Record<string, unknown>> }>;
+    }>("expo-document-picker");
+    const FileSystem = loadExpo<{
+      readAsStringAsync: (uri: string, o: unknown) => Promise<string>;
+      cacheDirectory: string;
+      writeAsStringAsync: (path: string, data: string, o: unknown) => Promise<void>;
+      EncodingType: { Base64: string };
+    }>("expo-file-system");
+
+    const res = await picker.getDocumentAsync({ copyToCacheDirectory: true });
+    const asset = res.canceled ? null : res.assets?.[0];
+    if (!asset) return;
+    const uri = String(asset.uri);
+    const name = String(asset.name ?? "file");
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const bytes = fromBase64(base64);
+    const transferId = randomUUID();
+    const digest = hash(bytes);
+
+    this.set({
+      transfers: [
+        { id: transferId, name, size: bytes.length, progress: 0, status: "active", direction: "out" },
+        ...this.state.transfers,
+      ],
+    });
+    rt.mesh.send("file_offer", {
+      transferId,
+      name,
+      size: bytes.length,
+      mime: String(asset.mimeType ?? "application/octet-stream"),
+      hash: digest,
+    } satisfies FileOfferBody);
+
+    const total = Math.max(1, Math.ceil(bytes.length / FILE_CHUNK_BYTES));
+    for (let index = 0; index < total; index++) {
+      const slice = bytes.subarray(index * FILE_CHUNK_BYTES, (index + 1) * FILE_CHUNK_BYTES);
+      rt.mesh.send("file_chunk", {
+        transferId,
+        index,
+        data: slice.slice(),
+      } satisfies FileChunkBody);
+      this.updateTransfer(transferId, { progress: Math.round(((index + 1) / total) * 100) });
+      if (index % 32 === 31) await new Promise((r) => setTimeout(r, 0));
+    }
+    rt.mesh.send("file_complete", { transferId } satisfies FileCompleteBody);
+    this.updateTransfer(transferId, { progress: 100, status: "done" });
+    zeroize(bytes);
+  };
+
+  private async finishIncomingFile(transferId: string): Promise<void> {
+    const rt = this.runtime;
+    if (!rt) return;
+    const file = rt.incoming.get(transferId);
+    if (!file) return;
+    const total = file.chunks.reduce((n, c) => n + (c?.length ?? 0), 0);
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of file.chunks) {
+      if (!chunk) continue;
+      merged.set(chunk, offset);
+      offset += chunk.length;
+      zeroize(chunk);
+    }
+    if (!timingSafeEqual(hash(merged), file.hash)) {
+      this.updateTransfer(transferId, { status: "error" });
+      rt.incoming.delete(transferId);
+      zeroize(merged);
+      return;
+    }
+    try {
+      const FileSystem = loadExpo<{
+        cacheDirectory: string;
+        writeAsStringAsync: (path: string, data: string, o: unknown) => Promise<void>;
+        EncodingType: { Base64: string };
+      }>("expo-file-system");
+      const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+      const path = `${FileSystem.cacheDirectory}ghostwire-${transferId}-${safeName}`;
+      await FileSystem.writeAsStringAsync(path, toBase64(merged), {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      this.updateTransfer(transferId, { status: "done", progress: 100, url: path });
+    } catch {
+      this.updateTransfer(transferId, { status: "error" });
+    }
+    rt.incoming.delete(transferId);
+  }
+
+  /** Open the OS share sheet for a received file. */
+  shareFile = async (id: string): Promise<void> => {
+    const transfer = this.state.transfers.find((t) => t.id === id);
+    if (!transfer?.url) return;
+    const Sharing = loadExpo<{
+      isAvailableAsync: () => Promise<boolean>;
+      shareAsync: (url: string) => Promise<void>;
+    }>("expo-sharing");
+    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(transfer.url);
   };
 
   panicWipe = (): void => {
@@ -556,5 +740,14 @@ export class NativeSession {
     }
     void rt.localRelay?.close();
     zeroize(rt.sessionKey, rt.keyPair.privateKey, rt.adminPrivateKey);
+  }
+}
+
+function loadExpo<T>(name: string): T {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(name) as T;
+  } catch {
+    throw new Error(`${name} is not installed; run npm install in apps/native`);
   }
 }

@@ -19,7 +19,8 @@
         "NSCameraUsageDescription": "Scan a GhostWire invite to join a session.",
         "NSBluetoothAlwaysUsageDescription": "GhostWire uses Bluetooth to form an offline mesh.",
         "NSBluetoothPeripheralUsageDescription": "GhostWire uses Bluetooth to form an offline mesh.",
-        "NSLocalNetworkUsageDescription": "GhostWire connects to peers on your local network."
+        "NSLocalNetworkUsageDescription": "GhostWire connects to peers on your local network.",
+        "UIBackgroundModes": ["bluetooth-central", "bluetooth-peripheral"]
       }
     },
     "android": {
@@ -33,7 +34,8 @@
         "BLUETOOTH_ADVERTISE",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_CONNECTED_DEVICE"
       ]
     },
     "plugins": []
