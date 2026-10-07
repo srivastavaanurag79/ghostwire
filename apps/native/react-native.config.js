@@ -1,16 +1,21 @@
 // React Native autolinking config.
 //
-// `react-native-tcp-socket` ships native Android code but is not auto-detected
-// by the CLI (no `react-native` field), so it is listed explicitly to make the
-// build register `NativeModules.TcpSockets` (used by the on-phone relay).
+// Two libraries ship native Android code without a `react-native` package field,
+// so the CLI does not auto-detect them; they are listed explicitly:
+//  - `react-native-tcp-socket` → `NativeModules.TcpSockets` (on-phone relay)
+//  - `react-native-ble-plx`    → central BLE (scan/connect/subscribe/write)
 //
-// BLE now comes from `munim-bluetooth` (Nitro modules), which is auto-detected.
+// `react-native-ble-peripheral-manager` (peripheral/GATT server) declares
+// codegen + android and is auto-detected.
 const path = require("path");
 
 module.exports = {
   dependencies: {
     "react-native-tcp-socket": {
       root: path.join(__dirname, "node_modules", "react-native-tcp-socket"),
+    },
+    "react-native-ble-plx": {
+      root: path.join(__dirname, "node_modules", "react-native-ble-plx"),
     },
   },
 };

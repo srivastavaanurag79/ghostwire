@@ -13,7 +13,9 @@
       "backgroundColor": "#0e1621",
       "resizeMode": "contain"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.ghostwire",
@@ -22,7 +24,10 @@
         "NSBluetoothAlwaysUsageDescription": "GhostWire uses Bluetooth to form an offline mesh.",
         "NSBluetoothPeripheralUsageDescription": "GhostWire uses Bluetooth to form an offline mesh.",
         "NSLocalNetworkUsageDescription": "GhostWire connects to peers on your local network.",
-        "UIBackgroundModes": ["bluetooth-central", "bluetooth-peripheral"]
+        "UIBackgroundModes": [
+          "bluetooth-central",
+          "bluetooth-peripheral"
+        ]
       }
     },
     "android": {
@@ -54,13 +59,7 @@
           }
         }
       ],
-      [
-        "munim-bluetooth",
-        {
-          "androidBluetoothPermissions": ["scan", "connect", "advertise"],
-          "localNetworkUsageDescription": "GhostWire discovers and connects to nearby peers over Bluetooth."
-        }
-      ]
+      "expo-asset"
     ]
   }
 }
