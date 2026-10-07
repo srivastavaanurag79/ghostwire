@@ -53,6 +53,14 @@
             "usesCleartextTraffic": true
           }
         }
+      ],
+      [
+        "@syncmesh/rn-ble",
+        {
+          "neverForLocation": true,
+          "modes": ["central", "peripheral"],
+          "bluetoothAlwaysPermission": "Allow GhostWire to connect to nearby devices to form an offline mesh."
+        }
       ]
     ]
   }
