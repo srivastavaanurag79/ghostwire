@@ -380,6 +380,29 @@ export class NativeSession {
     this.openRelaySession(name, relayUrl, { host: false, pin });
 
   /**
+   * Join from a scanned/imported invite. Understands:
+   *  - web relay invite (URL or `GW1:` with `relay` + `pin`) → joins over WebSocket
+   *  - Bluetooth invite (`GW1:` with session material, no relay/sig) → BLE mesh
+   *  - direct WebRTC invite (`sig`) → not supported here (explains why)
+   */
+  joinFromQr = async (text: string, name: string): Promise<void> => {
+    const index = text.indexOf("GW1:");
+    if (index < 0) throw new Error("Not a GhostWire invite");
+    const payload = decodeQRPayload(text.trim().slice(index));
+    if (payload.relay) {
+      if (!payload.pin) throw new Error("This relay invite is missing its PIN");
+      await this.openRelaySession(name, payload.relay, { host: false, pin: payload.pin });
+      return;
+    }
+    if (payload.sig) {
+      throw new Error(
+        "This is a direct WebRTC invite. Ask the host to use Relay + PIN, or join from the web app.",
+      );
+    }
+    await this.joinBle(text.trim(), name);
+  };
+
+  /**
    * Host a session entirely on this phone: start the on-phone relay and connect
    * to it over localhost. Others on the same Wi-Fi/hotspot join with the PIN.
    */

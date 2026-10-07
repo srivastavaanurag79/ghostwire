@@ -245,7 +245,7 @@ export default function App() {
               <Text style={styles.secondaryText}>Start Bluetooth mesh (no internet)</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondary} onPress={() => setMode("blejoin")}>
-              <Text style={styles.secondaryText}>Join Bluetooth mesh (paste invite)</Text>
+              <Text style={styles.secondaryText}>Join with a QR / invite</Text>
             </TouchableOpacity>
             <View style={styles.homeLinks}>
               <TouchableOpacity onPress={() => setHelp(true)}>
@@ -304,19 +304,23 @@ export default function App() {
 
             {mode === "blejoin" && (
               <>
-                <Text style={styles.label}>Invite payload</Text>
+                <Text style={styles.label}>Invite (QR or pasted link)</Text>
                 <TextInput
                   style={[styles.input, styles.multiline]}
                   value={blePayload}
                   onChangeText={setBlePayload}
                   multiline
                   autoCapitalize="none"
-                  placeholder="Paste the GW1:… invite from the host"
+                  placeholder="Paste a GW1:… invite link"
                   placeholderTextColor="#7f91a4"
                 />
                 <TouchableOpacity style={styles.secondary} onPress={() => setScanning(true)}>
                   <Text style={styles.secondaryText}>Scan invite QR with camera</Text>
                 </TouchableOpacity>
+                <Text style={styles.note}>
+                  Scan a host's relay invite to join over WebSockets, or a Bluetooth invite to join
+                  the mesh.
+                </Text>
               </>
             )}
 
@@ -329,7 +333,7 @@ export default function App() {
                   if (mode === "join") return session.joinRelay(name, relay.trim(), pin.trim());
                   if (mode === "hostphone") return session.hostOnPhone(name);
                   if (mode === "ble") return session.createBle(name).then(() => undefined);
-                  return session.joinBle(blePayload.trim(), name);
+                  return session.joinFromQr(blePayload.trim(), name);
                 })
               }
             >
@@ -357,7 +361,7 @@ export default function App() {
         <QrScanner
           onResult={(data) => {
             setScanning(false);
-            void run(() => session.joinBle(data, name));
+            void run(() => session.joinFromQr(data, name));
           }}
           onClose={() => setScanning(false)}
         />
