@@ -58,7 +58,40 @@ pnpm --filter @ghostwire/relay start -- --port 8787
 pnpm --filter @ghostwire/relay start -- --port 8787 --serve apps/web/out
 ```
 
-## Why native matters
+## Build an APK / dev build
+
+Bluetooth and the on-phone relay are **native modules**, so Expo Go cannot run them — you need a
+development build or a standalone APK.
+
+**Option A — cloud APK (recommended; no local SDK/JDK needed).** Uses [`eas.json`](./eas.json):
+
+```bash
+cd apps/native
+npm install
+npx eas-cli login            # free Expo account
+npx eas-cli build -p android --profile preview   # produces a downloadable .apk
+```
+
+Install that APK on **two physical phones** and test the Bluetooth mesh. (An emulator has no
+Bluetooth radio.) `--profile development` builds a dev-client APK instead.
+
+**Option B — local build.** Requires the Android SDK (you have it: `%ANDROID_HOME%`) **and JDK 17**
+(Expo SDK 51 / RN 0.74 do not build with JDK 11):
+
+```bash
+cd apps/native
+npm install
+npx expo run:android          # builds + installs a debug dev build to a USB device/emulator
+# adb lives at %ANDROID_HOME%\platform-tools\adb.exe (not on PATH)
+```
+
+**Emulator.** `%ANDROID_HOME%\emulator\emulator.exe -avd Medium_Phone_API_35`. Useful for UI,
+relay + PIN, and WebRTC over the network — **not** for BLE.
+
+**What needs a second physical phone:** only the Bluetooth LE mesh. Everything else (relay + PIN,
+WebRTC, file sharing, moderation) can be exercised with one phone + emulator, or two browsers.
+
+
 
 - **Bluetooth LE mesh**: relay between phones with no internet, no router, no hotspot.
 - **On-phone server**: the host phone becomes the relay, so others join with a PIN — no computer.

@@ -7,6 +7,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
+    "build:apk": "npx eas-cli build -p android --profile preview",
+    "build:dev": "npx eas-cli build -p android --profile development",
     "build": "node -e \"console.log('native: use eas build or expo run:android|ios')\"",
     "typecheck": "tsc --noEmit",
     "test": "node -e \"console.log('native: no tests yet')\"",
