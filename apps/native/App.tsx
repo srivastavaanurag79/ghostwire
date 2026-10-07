@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   BackHandler,
+  Linking,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -17,6 +19,7 @@ import { QrScanner } from "./src/components/QrScanner";
 
 const session = new NativeSession();
 const DEFAULT_RELAY = "ws://192.168.1.10:8787";
+const WEB_URL = "https://qrghostwire.vercel.app";
 
 export default function App() {
   const state = useSyncExternalStore(session.subscribe, session.getState);
@@ -29,6 +32,7 @@ export default function App() {
   const [text, setText] = useState("");
   const [blePayload, setBlePayload] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [help, setHelp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -241,6 +245,14 @@ export default function App() {
             <TouchableOpacity style={styles.secondary} onPress={() => setMode("blejoin")}>
               <Text style={styles.secondaryText}>Join Bluetooth mesh (paste invite)</Text>
             </TouchableOpacity>
+            <View style={styles.homeLinks}>
+              <TouchableOpacity onPress={() => setHelp(true)}>
+                <Text style={styles.linkText}>How to use GhostWire</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void Linking.openURL(WEB_URL)}>
+                <Text style={styles.linkText}>Open web version in browser</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.note}>
               Relay + PIN needs a meeting point (a relay on a computer or hosted). The Bluetooth mesh
               needs no internet, no hotspot and no relay — one QR to join. BLE is in progress and
@@ -348,6 +360,67 @@ export default function App() {
           onClose={() => setScanning(false)}
         />
       )}
+
+      <Modal visible={help} animationType="slide" onRequestClose={() => setHelp(false)}>
+        <SafeAreaView style={styles.screen}>
+          <View style={styles.header}>
+            <Text style={styles.title}>How to use GhostWire</Text>
+            <TouchableOpacity onPress={() => setHelp(false)}>
+              <Text style={styles.linkText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.helpContent}>
+            <Text style={styles.helpH}>What it is</Text>
+            <Text style={styles.helpP}>
+              A private group chat that needs no account and keeps nothing. Messages are encrypted
+              and live only in memory. When the session ends, they are gone.
+            </Text>
+
+            <Text style={styles.helpH}>Relay + 6-digit PIN (easiest)</Text>
+            <Text style={styles.helpP}>
+              1. The host taps “Host on this phone” (or “Create a session (relay + PIN)” with a relay
+              URL).{"\n"}
+              2. The host shares the 6-digit PIN.{"\n"}
+              3. Everyone else taps “Join with a PIN”, enters the relay URL and the PIN.{"\n"}
+              No second QR and no camera needed. Works on the same Wi‑Fi/hotspot, even with no
+              internet, or over the internet if the relay is hosted.
+            </Text>
+
+            <Text style={styles.helpH}>Bluetooth mesh (no internet at all)</Text>
+            <Text style={styles.helpP}>
+              1. The host taps “Start Bluetooth mesh” and shows the invite QR.{"\n"}
+              2. Another phone taps “Join Bluetooth mesh” and scans it.{"\n"}
+              Only one QR — Bluetooth needs no reply handshake. This needs two physical phones; an
+              emulator has no Bluetooth radio.
+            </Text>
+
+            <Text style={styles.helpH}>Direct QR over a hotspot</Text>
+            <Text style={styles.helpP}>
+              On the web app, one phone shares its hotspot and others join with a two-scan QR. See
+              the web version for step-by-step instructions.
+            </Text>
+
+            <Text style={styles.helpH}>Roles</Text>
+            <Text style={styles.helpP}>
+              The host is the admin and can approve or decline joiners and revoke people. Moderators
+              can help approve. Speakers can send messages; listeners can only read.
+            </Text>
+
+            <Text style={styles.helpH}>Staying safe</Text>
+            <Text style={styles.helpP}>
+              Only invite people you trust. If a phone is compromised while a session is open, that
+              device can be read — no app can prevent that. Use “Wipe” to erase everything.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.primary}
+              onPress={() => void Linking.openURL(WEB_URL)}
+            >
+              <Text style={styles.primaryText}>Open web version</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -446,4 +519,9 @@ const styles = StyleSheet.create({
   transferMeta: { color: "#7f91a4", fontSize: 11 },
   shareBtn: { backgroundColor: "#2aabee", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   shareText: { color: "#fff", fontSize: 11, fontWeight: "600" },
+  homeLinks: { marginTop: 16, gap: 10, alignItems: "center" },
+  linkText: { color: "#5fb0e8", fontSize: 14, fontWeight: "600" },
+  helpContent: { padding: 20, gap: 6, paddingBottom: 48 },
+  helpH: { color: "#fff", fontSize: 15, fontWeight: "700", marginTop: 14 },
+  helpP: { color: "#c8d3de", fontSize: 14, lineHeight: 21 },
 });

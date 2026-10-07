@@ -42,7 +42,7 @@ interface Room {
 }
 
 interface SocketLike {
-  write(data: Uint8Array | string): void;
+  write(data: Uint8Array | string, encoding?: string, cb?: () => void): void;
   destroy(): void;
   on(event: string, cb: (...args: unknown[]) => void): void;
   setNoDelay?(value: boolean): void;
@@ -73,6 +73,13 @@ function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   return out;
 }
 
+/** react-native-tcp-socket wants a Buffer (or string), not a raw Uint8Array. */
+function writeBytes(socket: SocketLike, bytes: Uint8Array): void {
+  const B = (globalThis as { Buffer?: { from(data: Uint8Array): unknown } }).Buffer;
+  if (B) socket.write(B.from(bytes) as unknown as Uint8Array);
+  else socket.write(bytes);
+}
+
 /** Start an in-process relay on the phone. Others connect to ws://<lan-ip>:port. */
 export async function startLocalRelay(
   options: StartLocalRelayOptions = {},
@@ -89,10 +96,10 @@ export async function startLocalRelay(
   };
 
   const sendText = (client: Client, message: unknown): void => {
-    client.socket.write(encodeFrame(encodeUtf8(JSON.stringify(message)), OP_TEXT));
+    writeBytes(client.socket, encodeFrame(encodeUtf8(JSON.stringify(message)), OP_TEXT));
   };
   const sendBinary = (client: Client, bytes: Uint8Array): void => {
-    client.socket.write(encodeFrame(bytes, OP_BINARY));
+    writeBytes(client.socket, encodeFrame(bytes, OP_BINARY));
   };
   const peersOf = (client: Client): Client[] => {
     const room = client.pin ? rooms.get(client.pin) : undefined;
