@@ -31,6 +31,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Hermes runtime globals check
+        run: pnpm check:runtime
+
       - name: Typecheck
         run: pnpm typecheck
 

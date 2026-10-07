@@ -23,6 +23,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "check:runtime": "node scripts/check-hermes-globals.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "clean": "turbo run clean && rimraf node_modules"
   },
