@@ -5,13 +5,22 @@ import Link from "next/link";
 import { InstallButton } from "@/components/InstallButton";
 import { Logo } from "@/components/Logo";
 import { panicWipe } from "@/lib/session";
+import { setSoundEnabled as persistSound } from "@/lib/sound";
+import { useUi } from "@/lib/store";
 
 export default function SettingsPage() {
   const [dark, setDark] = useState(true);
+  const soundEnabled = useUi((s) => s.soundEnabled);
 
   useEffect(() => {
     setDark(document.documentElement.classList.contains("dark"));
   }, []);
+
+  function toggleSound() {
+    const next = !soundEnabled;
+    useUi.getState().setSoundEnabled(next);
+    persistSound(next);
+  }
 
   function toggleTheme() {
     const next = !dark;
@@ -51,6 +60,13 @@ export default function SettingsPage() {
         >
           <span>Appearance</span>
           <span className="gw-muted">{dark ? "Dark" : "Light"}</span>
+        </button>
+        <button
+          onClick={toggleSound}
+          className="flex w-full items-center justify-between px-5 py-4 text-left text-sm hover:bg-black/5"
+        >
+          <span>Notification sounds</span>
+          <span className="gw-muted">{soundEnabled ? "On" : "Off"}</span>
         </button>
         <div className="flex items-center justify-between px-5 py-4 text-sm">
           <span>Session storage</span>

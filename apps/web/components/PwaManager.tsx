@@ -1,16 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppUpdate } from "@/lib/pwa";
+import { isSoundEnabled, loadSoundPreference, unlockAudio } from "@/lib/sound";
+import { useUi } from "@/lib/store";
 
 /**
- * Registers the service worker and shows a small banner when a newer deploy is
- * available, letting the user reload into it.
+ * Registers the service worker, shows a small banner when a newer deploy is
+ * available, and primes notification audio on the first user gesture.
  */
 export function PwaManager() {
   const { updateReady, applyUpdate } = useAppUpdate();
   const [dismissed, setDismissed] = useState(false);
   const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    loadSoundPreference();
+    useUi.getState().setSoundEnabled(isSoundEnabled());
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
   if (!updateReady || dismissed) return null;
 

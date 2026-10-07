@@ -3,6 +3,17 @@ import type { ChatMessage, Peer, Role } from "@ghostwire/protocol";
 
 export type TransportKind = "webrtc" | "relay";
 
+export type NotificationKind = "join" | "leave" | "request" | "message" | "success" | "error";
+
+export interface AppNotification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body?: string;
+  ts: number;
+  read: boolean;
+}
+
 export interface JoinRequestView {
   peerId: string;
   name: string;
@@ -34,6 +45,9 @@ interface UiState {
   messages: ChatMessage[];
   joinRequests: JoinRequestView[];
   transfers: TransferView[];
+  notifications: AppNotification[];
+  soundEnabled: boolean;
+  connection: "online" | "offline";
   notice: string | null;
 
   activate: (data: {
@@ -52,6 +66,11 @@ interface UiState {
   removeJoinRequest: (peerId: string) => void;
   addTransfer: (transfer: TransferView) => void;
   updateTransfer: (id: string, patch: Partial<TransferView>) => void;
+  addNotification: (notification: AppNotification) => void;
+  markNotificationsRead: () => void;
+  clearNotifications: () => void;
+  setSoundEnabled: (enabled: boolean) => void;
+  setConnection: (connection: "online" | "offline") => void;
   setNotice: (notice: string | null) => void;
   reset: () => void;
 }
@@ -68,6 +87,9 @@ const initial = {
   messages: [] as ChatMessage[],
   joinRequests: [] as JoinRequestView[],
   transfers: [] as TransferView[],
+  notifications: [] as AppNotification[],
+  soundEnabled: true,
+  connection: "online" as const,
   notice: null as string | null,
 };
 
@@ -100,6 +122,16 @@ export const useUi = create<UiState>((set) => ({
     set((s) => ({
       transfers: s.transfers.map((t) => (t.id === id ? { ...t, ...patch } : t)),
     })),
+  addNotification: (notification) =>
+    set((s) => ({
+      // Keep the list bounded; newest first.
+      notifications: [notification, ...s.notifications].slice(0, 100),
+    })),
+  markNotificationsRead: () =>
+    set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, read: true })) })),
+  clearNotifications: () => set({ notifications: [] }),
+  setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
+  setConnection: (connection) => set({ connection }),
   setNotice: (notice) => set({ notice }),
   reset: () => set({ ...initial }),
 }));

@@ -141,4 +141,50 @@ describe("WebSocketTransport", () => {
     guest.close();
     await new Promise<void>((resolve) => roomServer.close(() => resolve()));
   });
+
+  it("rejoins the PIN room automatically after a dropped connection", async () => {
+    const roomServer = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+    await new Promise<void>((resolve) => roomServer.once("listening", () => resolve()));
+    const roomPort = (roomServer.address() as { port: number }).port;
+    const configs = new Map<string, unknown>();
+    let guestJoins = 0;
+    let lastGuestSocket: WebSocket | null = null;
+
+    roomServer.on("connection", (socket) => {
+      const id = `r-${Math.random().toString(36).slice(2, 7)}`;
+      (socket as unknown as { gwId: string }).gwId = id;
+      socket.send(JSON.stringify({ t: "welcome", id }));
+      socket.on("message", (raw, isBinary) => {
+        if (isBinary) return;
+        const msg = JSON.parse(raw.toString()) as { t?: string; pin?: string; config?: unknown };
+        if (msg.t === "host") {
+          configs.set(msg.pin!, msg.config);
+          socket.send(JSON.stringify({ t: "hosted", pin: msg.pin }));
+        } else if (msg.t === "guest") {
+          guestJoins += 1;
+          lastGuestSocket = socket;
+          socket.send(JSON.stringify({ t: "config", config: configs.get(msg.pin!) }));
+        }
+      });
+    });
+
+    const host = new WebSocketTransport(`ws://127.0.0.1:${roomPort}`);
+    await host.open();
+    await host.host("424242", { sid: "s", sk: "k", apk: "a", st: 1 });
+
+    const guest = new WebSocketTransport(`ws://127.0.0.1:${roomPort}`, { reconnectDelayMs: 150 });
+    await guest.join("424242");
+    expect(guestJoins).toBe(1);
+
+    // Kill the guest's socket; the transport should reconnect and re-send the
+    // room control frame so it is not orphaned.
+    const dropped = lastGuestSocket as unknown as { terminate(): void } | null;
+    dropped?.terminate();
+    await waitFor(() => guestJoins >= 2, 5_000);
+    expect(guestJoins).toBeGreaterThanOrEqual(2);
+
+    host.close();
+    guest.close();
+    await new Promise<void>((resolve) => roomServer.close(() => resolve()));
+  });
 });

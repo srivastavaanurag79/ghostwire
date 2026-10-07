@@ -47,7 +47,8 @@ import {
   type Transport,
   type WebRTCTransport,
 } from "@ghostwire/transport";
-import { systemMessage, useUi, type TransportKind } from "./store";
+import { systemMessage, useUi, type NotificationKind, type TransportKind } from "./store";
+import { playSound } from "./sound";
 import { shortHex, toHex } from "./utils";
 
 /** Max file size we will buffer in memory on the web client. */
@@ -107,6 +108,30 @@ function refreshPeers(): void {
   useUi.getState().setPeers(peers);
 }
 
+/** Push a notification to the panel and play its sound. */
+function notify(kind: NotificationKind, title: string, body?: string): void {
+  useUi.getState().addNotification({
+    id: randomUUID(),
+    kind,
+    title,
+    body,
+    ts: Date.now(),
+    read: false,
+  });
+  playSound(kind);
+}
+
+function handlePeerLeave(peerId: string, peer?: Peer): void {
+  refreshPeers();
+  // In direct (WebRTC) mode losing a link is permanent until re-pairing, so tell
+  // the user. Relay mode reconnects automatically and would be noisy here.
+  if (peer && runtime?.transportKind === "webrtc") {
+    notify("leave", `${peer.name} disconnected`);
+    useUi.getState().addMessage(systemMessage(`${peer.name} disconnected.`));
+  }
+  void peerId;
+}
+
 function startHeartbeat(): void {
   if (!runtime || runtime.heartbeat) return;
   runtime.heartbeat = setInterval(() => {
@@ -125,6 +150,46 @@ function stopHeartbeat(): void {
   if (runtime?.heartbeat) {
     clearInterval(runtime.heartbeat);
     runtime.heartbeat = null;
+  }
+}
+
+let connectionTimer: ReturnType<typeof setInterval> | null = null;
+let connectionBound = false;
+
+function computeOnline(): boolean {
+  const rt = runtime;
+  if (!rt) return true;
+  if (rt.transportKind === "relay") {
+    return rt.transport instanceof WebSocketTransport ? rt.transport.isOpen : true;
+  }
+  // Direct WebRTC: a joined non-host with no live links has lost the session;
+  // the host simply has no peers yet.
+  if (rt.transportKind === "webrtc") {
+    if (!rt.isHost && rt.joined) return rt.transport.peerIds.length > 0;
+    return typeof navigator === "undefined" || navigator.onLine;
+  }
+  return true;
+}
+
+function updateConnection(): void {
+  useUi.getState().setConnection(computeOnline() ? "online" : "offline");
+}
+
+/** Track link health so the UI can show a "reconnecting" state. */
+function startConnectionWatch(): void {
+  if (!connectionBound && typeof window !== "undefined") {
+    connectionBound = true;
+    window.addEventListener("online", updateConnection);
+    window.addEventListener("offline", updateConnection);
+  }
+  updateConnection();
+  if (!connectionTimer) connectionTimer = setInterval(updateConnection, 4_000);
+}
+
+function stopConnectionWatch(): void {
+  if (connectionTimer) {
+    clearInterval(connectionTimer);
+    connectionTimer = null;
   }
 }
 
@@ -154,11 +219,15 @@ function handleIncoming(inner: InnerMessage, fromPeerId: string): void {
   if (!runtime) return;
   const ui = useUi.getState();
 
+  const existing = runtime.mesh.peers.get(fromPeerId);
   runtime.mesh.peers.upsert(fromPeerId, {
     name: inner.sender.name,
     pubkey: inner.sender.pubkey,
     role: inner.sender.role,
   });
+  if (!existing && inner.type !== "join_request" && inner.sender.pubkey.length > 0) {
+    notify("join", `${inner.sender.name} joined`);
+  }
 
   switch (inner.type) {
     case "chat": {
@@ -171,6 +240,11 @@ function handleIncoming(inner: InnerMessage, fromPeerId: string): void {
         role: inner.sender.role,
         content: body.text,
       });
+      // Only chime for messages that arrive while the tab is in the background,
+      // so an active conversation stays quiet.
+      if (typeof document !== "undefined" && document.hidden) {
+        notify("message", inner.sender.name, body.text);
+      }
       break;
     }
     case "join_request": {
@@ -189,6 +263,7 @@ function handleIncoming(inner: InnerMessage, fromPeerId: string): void {
         requestedRole,
         receivedAt: Date.now(),
       });
+      notify("request", `${body.name} wants to join`, "Approve or decline in the requests panel.");
       break;
     }
     case "join_accept": {
@@ -214,11 +289,13 @@ function handleIncoming(inner: InnerMessage, fromPeerId: string): void {
       ui.addMessage(
         systemMessage(`${body.revoke.length} participant(s) were removed by the admin`),
       );
+      notify("leave", "Participant removed", "The admin revoked a participant.");
       refreshPeers();
       break;
     }
     case "session_close": {
       ui.addMessage(systemMessage("The session was closed by the admin."));
+      notify("error", "Session closed", "The admin ended the session.");
       teardown({ reload: true });
       break;
     }
@@ -260,6 +337,7 @@ function applyToken(token: RoleToken, delegation?: DelegationCert): void {
   useUi.getState().setRole(token.role);
   useUi.getState().setJoined(true);
   useUi.getState().addMessage(systemMessage(`You are connected as ${token.role}.`));
+  notify("success", "Connected", `You joined as ${token.role}.`);
   announce();
   startHeartbeat();
 }
@@ -333,7 +411,7 @@ export async function createSession(
     }),
     onMessage: handleIncoming,
     onPeerJoin: () => refreshPeers(),
-    onPeerLeave: () => refreshPeers(),
+    onPeerLeave: handlePeerLeave,
   });
   mesh.start();
 
@@ -378,6 +456,7 @@ export async function createSession(
     ),
   );
   startHeartbeat();
+  startConnectionWatch();
 
   return {
     sessionId,
@@ -430,7 +509,7 @@ export async function createRelaySession(
     identity: buildMeshIdentity({ name: displayName, role: "admin", token, keyPair: adminKeyPair }),
     onMessage: handleIncoming,
     onPeerJoin: () => refreshPeers(),
-    onPeerLeave: () => refreshPeers(),
+    onPeerLeave: handlePeerLeave,
   });
   mesh.start();
 
@@ -470,6 +549,7 @@ export async function createRelaySession(
   });
   ui.addMessage(systemMessage(`Session open. Share the PIN ${pin} to let people join.`));
   startHeartbeat();
+  startConnectionWatch();
 
   return { pin };
 }
@@ -678,7 +758,7 @@ function createJoinerRuntime(params: {
         runtime.mesh.send("join_request", { name, pubkey: keyPair.publicKey });
       }
     },
-    onPeerLeave: () => refreshPeers(),
+    onPeerLeave: handlePeerLeave,
   });
   mesh.start();
 
@@ -718,6 +798,7 @@ function createJoinerRuntime(params: {
       ? "Connected to the relay. Waiting for the host to approve…"
       : "Hand the answer QR back to the host to complete the link.",
   );
+  startConnectionWatch();
 }
 
 /** Host: build a relay invite link + QR payload for a chosen role. */
@@ -777,6 +858,7 @@ export function approveJoin(peerId: string, role: Role): void {
   runtime.pendingJoinPeers.delete(peerId);
   useUi.getState().removeJoinRequest(peerId);
   useUi.getState().addMessage(systemMessage(`${req.name} joined as ${role}.`));
+  notify("success", "Approved", `${req.name} joined as ${role}.`);
 }
 
 export function rejectJoin(peerId: string): void {
@@ -851,6 +933,7 @@ function teardown(opts: { reload: boolean; silent?: boolean }): void {
   const rt = runtime;
   runtime = null;
   stopHeartbeat();
+  stopConnectionWatch();
   try {
     rt.mesh.wipe();
   } catch {

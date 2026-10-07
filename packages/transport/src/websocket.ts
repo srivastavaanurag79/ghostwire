@@ -42,6 +42,7 @@ export class WebSocketTransport extends BaseTransport {
   private readonly peers = new Set<string>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
+  private room: { pin: string; role: "host" | "guest"; config?: RelayRoomConfig } | null = null;
   private pendingHost: { resolve: () => void; reject: (e: Error) => void } | null = null;
   private pendingGuest: {
     resolve: (config: RelayRoomConfig) => void;
@@ -76,6 +77,7 @@ export class WebSocketTransport extends BaseTransport {
   /** Open a room (host) with a short PIN and this session's bootstrap config. */
   async host(pin: string, config: RelayRoomConfig): Promise<void> {
     await this.open();
+    this.room = { pin, role: "host", config };
     return new Promise((resolve, reject) => {
       this.pendingHost = { resolve, reject };
       this.socket?.send(JSON.stringify({ t: "host", pin, config }));
@@ -91,6 +93,7 @@ export class WebSocketTransport extends BaseTransport {
   /** Join an existing room by PIN; resolves with the room's bootstrap config. */
   async join(pin: string): Promise<RelayRoomConfig> {
     await this.open();
+    this.room = { pin, role: "guest" };
     return new Promise<RelayRoomConfig>((resolve, reject) => {
       this.pendingGuest = { resolve, reject };
       this.socket?.send(JSON.stringify({ t: "guest", pin }));
@@ -101,6 +104,16 @@ export class WebSocketTransport extends BaseTransport {
         }
       }, 10_000);
     });
+  }
+
+  /** Re-send the room control frame after a reconnect. */
+  private replayRoom(): void {
+    if (!this.room || !this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    const message =
+      this.room.role === "host"
+        ? { t: "host", pin: this.room.pin, config: this.room.config }
+        : { t: "guest", pin: this.room.pin };
+    this.socket.send(JSON.stringify(message));
   }
 
   connect(_peerId: string, _signaling?: SignalingData): Promise<void> {
@@ -114,7 +127,12 @@ export class WebSocketTransport extends BaseTransport {
       const socket = new WebSocket(this.url);
       socket.binaryType = "arraybuffer";
       this.socket = socket;
-      socket.onopen = () => resolve();
+      socket.onopen = () => {
+        resolve();
+        // Rejoin the room automatically after a reconnect so a dropped
+        // connection does not leave the peer orphaned.
+        this.replayRoom();
+      };
       socket.onerror = () => reject(new Error(`WebSocketTransport: cannot connect to ${this.url}`));
       socket.onclose = () => {
         this.handleClose();
@@ -149,6 +167,7 @@ export class WebSocketTransport extends BaseTransport {
     }
     this.closed = true;
     this.clearReconnect();
+    this.room = null;
     this.socket?.close();
     this.socket = null;
     for (const id of [...this.peers]) this.peers.delete(id);

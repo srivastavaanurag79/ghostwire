@@ -128,7 +128,7 @@ export default function CreatePage() {
                   value={relayUrl}
                   onChange={(e) => setRelayUrl(e.target.value)}
                   placeholder="ws://192.168.1.10:8787"
-                  className="mt-1 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2"
+                  className="mt-1 w-full rounded-xl border gw-border bg-transparent px-4 py-3 text-base outline-none ring-tg-blue/40 focus:ring-2"
                 />
                 <p className="mt-2 text-xs gw-muted">
                   A relay is a small meeting point that connects participants. It runs on a{" "}

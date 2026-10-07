@@ -21,7 +21,8 @@ import {
   sendFile,
   MAX_FILE_BYTES,
 } from "@/lib/session";
-import { useUi } from "@/lib/store";
+import { useUi, type AppNotification, type JoinRequestView } from "@/lib/store";
+import { setSoundEnabled as persistSound } from "@/lib/sound";
 import { cx, formatBytes, formatTime, ROLE_META, shortId } from "@/lib/utils";
 
 const INVITE_ROLES: Role[] = ["listener", "speaker", "moderator"];
@@ -39,10 +40,14 @@ export default function ChatPage() {
   const messages = useUi((s) => s.messages);
   const joinRequests = useUi((s) => s.joinRequests);
   const transfers = useUi((s) => s.transfers);
+  const notifications = useUi((s) => s.notifications);
+  const soundEnabled = useUi((s) => s.soundEnabled);
+  const connection = useUi((s) => s.connection);
   const notice = useUi((s) => s.notice);
 
   const [text, setText] = useState("");
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<Role>("listener");
   const [inviteQR, setInviteQR] = useState<string | null>(null);
@@ -52,6 +57,7 @@ export default function ChatPage() {
   const [answerScanning, setAnswerScanning] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -63,8 +69,41 @@ export default function ChatPage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
 
+  // Keep the layout sized to the *visual* viewport so the composer stays above
+  // the mobile keyboard instead of sliding behind it.
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const apply = () => {
+      const el = mainRef.current;
+      if (!el) return;
+      el.style.height = `${vv.height}px`;
+      const scroller = scrollRef.current;
+      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    };
+    apply();
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+    };
+  }, []);
+
   const canSpeak = role === "admin" || role === "moderator" || role === "speaker";
   const canInvite = role === "admin" || role === "moderator";
+  const unread = notifications.filter((n) => !n.read).length + joinRequests.length;
+
+  function openNotifications() {
+    setShowNotifications(true);
+    useUi.getState().markNotificationsRead();
+  }
+
+  function toggleSound() {
+    const next = !soundEnabled;
+    useUi.getState().setSoundEnabled(next);
+    persistSound(next);
+  }
 
   const sortedTransfers = useMemo(() => transfers.slice(0, 6), [transfers]);
 
@@ -96,7 +135,7 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="flex h-dvh overflow-hidden bg-chat-dark text-white">
+    <main ref={mainRef} className="flex h-dvh overflow-hidden bg-chat-dark text-white">
       {/* Sidebar */}
       <aside
         className={cx(
@@ -104,7 +143,7 @@ export default function ChatPage() {
           showSidebar ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
+        <div className="gw-safe-top flex items-center gap-3 border-b border-white/10 px-4 py-4">
           <Logo size={36} />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">GhostWire session</p>
@@ -212,8 +251,19 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="border-t border-white/10 p-3">
+        <div className="gw-safe-bottom border-t border-white/10 p-3">
           {notice && <p className="mb-2 px-2 text-xs text-tg-amber">{notice}</p>}
+          {connection === "offline" && (
+            <button
+              onClick={() => {
+                if (isHost) setInviteOpen(true);
+                else router.push("/join");
+              }}
+              className="mb-2 w-full rounded-xl bg-tg-amber px-3 py-2.5 text-xs font-semibold text-black hover:opacity-90"
+            >
+              {isHost ? "Reconnect: show a new invite QR" : "Reconnect: scan a new invite"}
+            </button>
+          )}
           <div className="flex gap-2">
             <button
               onClick={panicWipe}
@@ -243,26 +293,57 @@ export default function ChatPage() {
 
       {/* Chat column */}
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-white/10 bg-[#17212b] px-3 py-3">
+        <header className="gw-safe-top flex items-center gap-2 border-b border-white/10 bg-[#17212b] px-3 py-2.5">
           <button
-            className="rounded-lg px-2 py-1 text-white/70 hover:bg-white/10 md:hidden"
+            className="rounded-lg px-2 py-2 text-white/70 hover:bg-white/10 md:hidden"
             onClick={() => setShowSidebar(true)}
             aria-label="Open menu"
           >
             ☰
           </button>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">Secure mesh</p>
             <p className="truncate text-xs text-white/50">
               {peers.length + 1} connected · end-to-end encrypted
             </p>
           </div>
-          <span className="ml-auto rounded-full border border-tg-green/40 px-3 py-1 text-[11px] text-tg-green">
-            ● live
+          <button
+            onClick={openNotifications}
+            className="relative rounded-lg px-2 py-2 text-white/70 hover:bg-white/10"
+            aria-label="Notifications"
+          >
+            🔔
+            {unread > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-tg-red px-1 text-[10px] font-bold text-white">
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
+          </button>
+          <span
+            className={cx(
+              "hidden rounded-full border px-3 py-1 text-[11px] sm:inline",
+              connection === "online"
+                ? "border-tg-green/40 text-tg-green"
+                : "border-tg-amber/40 text-tg-amber",
+            )}
+          >
+            {connection === "online" ? "● live" : "● reconnecting…"}
           </span>
         </header>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto gw-scroll gw-chat-bg px-3 py-4">
+        {connection === "offline" && (
+          <div className="flex items-center justify-center gap-2 bg-tg-amber/15 px-3 py-1.5 text-center text-[11px] text-tg-amber">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-tg-amber" />
+            {transportKind === "webrtc"
+              ? "Connection lost — open the menu and tap Reconnect to re-pair."
+              : "Connection lost — reconnecting to the session…"}
+          </div>
+        )}
+
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain gw-scroll gw-chat-bg px-3 py-4"
+        >
           <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
             <p className="mb-3 text-center text-xs text-white/40">
               Messages are encrypted with the session key and never stored.
@@ -273,7 +354,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="border-t border-white/10 bg-[#17212b] px-3 py-3">
+        <div className="gw-safe-bottom border-t border-white/10 bg-[#17212b] px-3 py-3">
           <div className="mx-auto flex w-full max-w-2xl items-end gap-2">
             <input
               ref={fileRef}
@@ -289,13 +370,20 @@ export default function ChatPage() {
               title={canSpeak ? `Send a file (max ${formatBytes(MAX_FILE_BYTES)})` : "Listeners cannot send"}
               disabled={!canSpeak}
               onClick={() => fileRef.current?.click()}
-              className="rounded-full bg-white/5 px-4 py-3 text-white/70 hover:bg-white/10 disabled:opacity-40"
+              className="rounded-full bg-white/5 px-3.5 py-3 text-white/70 hover:bg-white/10 disabled:opacity-40"
             >
               📎
             </button>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onFocus={() => {
+                // Bring the composer into view once the keyboard has animated in.
+                window.setTimeout(() => {
+                  const scroller = scrollRef.current;
+                  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+                }, 250);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -305,7 +393,7 @@ export default function ChatPage() {
               rows={1}
               disabled={!canSpeak}
               placeholder={canSpeak ? "Write an encrypted message…" : "You are a listener — read only"}
-              className="max-h-32 min-h-[46px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none ring-tg-blue/40 focus:ring-2 disabled:opacity-50"
+              className="max-h-32 min-h-[46px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base outline-none ring-tg-blue/40 focus:ring-2 disabled:opacity-50"
             />
             <button
               onClick={() => submit()}
@@ -318,6 +406,16 @@ export default function ChatPage() {
           </div>
         </div>
       </section>
+
+      <NotificationsPanel
+        open={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        joinRequests={joinRequests}
+        notifications={notifications}
+        soundEnabled={soundEnabled}
+        onToggleSound={toggleSound}
+        onClear={() => useUi.getState().clearNotifications()}
+      />
 
       {inviteOpen && (
         <InviteModal
@@ -629,5 +727,114 @@ function InviteModal({
         )}
       </div>
     </div>
+  );
+}
+
+const NOTIFICATION_ICON: Record<AppNotification["kind"], string> = {
+  request: "🔔",
+  join: "➕",
+  leave: "➖",
+  message: "💬",
+  success: "✅",
+  error: "⚠️",
+};
+
+function NotificationsPanel({
+  open,
+  onClose,
+  joinRequests,
+  notifications,
+  soundEnabled,
+  onToggleSound,
+  onClear,
+}: {
+  open: boolean;
+  onClose: () => void;
+  joinRequests: JoinRequestView[];
+  notifications: AppNotification[];
+  soundEnabled: boolean;
+  onToggleSound: () => void;
+  onClear: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <>
+      <button
+        className="fixed inset-0 z-40 bg-black/60 md:hidden"
+        onClick={onClose}
+        aria-label="Close notifications"
+      />
+      <aside className="gw-safe-top gw-safe-bottom fixed inset-y-0 right-0 z-50 flex w-[360px] max-w-[92vw] flex-col border-l border-white/10 bg-[#17212b] shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-4">
+          <span aria-hidden>🔔</span>
+          <h2 className="text-sm font-semibold">Notifications</h2>
+          <button
+            onClick={onToggleSound}
+            title={soundEnabled ? "Mute sounds" : "Unmute sounds"}
+            className="ml-auto rounded-lg px-2 py-1 text-white/60 hover:bg-white/10"
+            aria-label={soundEnabled ? "Mute sounds" : "Unmute sounds"}
+          >
+            {soundEnabled ? "🔊" : "🔇"}
+          </button>
+          <button
+            onClick={onClose}
+            className="rounded-lg px-2 py-1 text-white/50 hover:bg-white/10"
+            aria-label="Close notifications"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain gw-scroll px-3 py-3">
+          {joinRequests.length > 0 && (
+            <div className="mb-4">
+              <p className="px-1 pb-2 text-xs font-semibold uppercase tracking-wide text-tg-amber">
+                Waiting to join · {joinRequests.length}
+              </p>
+              <div className="flex flex-col gap-2">
+                {joinRequests.map((req) => (
+                  <JoinRequestCard key={req.peerId} request={req} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {notifications.length === 0 && joinRequests.length === 0 && (
+            <p className="px-2 py-6 text-center text-sm text-white/40">
+              Nothing yet. You&apos;ll hear a chime when someone joins or asks to join.
+            </p>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            {notifications.map((n) => (
+              <div
+                key={n.id}
+                className="flex items-start gap-3 rounded-xl px-3 py-2.5 hover:bg-white/5"
+              >
+                <span className="mt-0.5 text-base" aria-hidden>
+                  {NOTIFICATION_ICON[n.kind]}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium leading-tight">{n.title}</p>
+                  {n.body && <p className="mt-0.5 truncate text-xs text-white/50">{n.body}</p>}
+                  <p className="mt-0.5 text-[10px] text-white/35">{formatTime(n.ts)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {notifications.length > 0 && (
+          <div className="gw-safe-bottom border-t border-white/10 p-3">
+            <button
+              onClick={onClear}
+              className="w-full rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/5"
+            >
+              Clear notifications
+            </button>
+          </div>
+        )}
+      </aside>
+    </>
   );
 }

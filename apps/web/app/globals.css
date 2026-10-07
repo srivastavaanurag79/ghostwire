@@ -31,11 +31,35 @@ body {
   height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   background: var(--gw-bg);
   color: var(--gw-text);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+}
+
+/* Keep inputs at >=16px so iOS Safari does not zoom on focus. */
+input,
+textarea,
+select,
+button {
+  font-size: 16px;
+}
+
+/* iOS safe areas (notch / home indicator). */
+.gw-safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.gw-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .gw-panel {

@@ -15,6 +15,7 @@ import {
   type InnerMessage,
   type MessageBody,
   type MessageType,
+  type Peer,
   type Role,
   type RoleToken,
 } from "@ghostwire/protocol";
@@ -45,7 +46,7 @@ export interface MeshNodeOptions {
   /** Called for every authenticated, role-valid inner message. */
   onMessage: (inner: InnerMessage, fromPeerId: string) => void;
   onPeerJoin?: (peerId: string) => void;
-  onPeerLeave?: (peerId: string) => void;
+  onPeerLeave?: (peerId: string, peer?: Peer) => void;
   /** Called when a message is dropped; for local diagnostics only. */
   onDrop?: (reason: string, envelope?: Envelope) => void;
   dedupLimit?: number;
@@ -109,8 +110,9 @@ export class MeshNode {
         this.options.onPeerJoin?.(peerId);
       }),
       transport.onPeerLeave((peerId) => {
+        const peer = this.registry.get(peerId);
         this.registry.remove(peerId);
-        this.options.onPeerLeave?.(peerId);
+        this.options.onPeerLeave?.(peerId, peer);
       }),
     ];
   }
