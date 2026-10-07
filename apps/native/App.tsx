@@ -1,5 +1,6 @@
-import React, { useMemo, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
+  BackHandler,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -32,6 +33,24 @@ export default function App() {
   const [busy, setBusy] = useState(false);
 
   const canSpeak = state.role === "admin" || state.role === "moderator" || state.role === "speaker";
+
+  // Android back gesture/button should navigate inside the app, not exit it.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (scanning) {
+        setScanning(false);
+        return true;
+      }
+      if (mode !== "home") {
+        setMode("home");
+        return true;
+      }
+      // Stay in an active session rather than closing the app.
+      if (state.screen === "active") return true;
+      return false;
+    });
+    return () => subscription.remove();
+  }, [scanning, mode, state.screen]);
 
   async function run(action: () => Promise<void>) {
     setError(null);
