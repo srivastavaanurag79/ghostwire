@@ -13,12 +13,14 @@
     "typecheck": "tsc --noEmit",
     "test": "node -e \"console.log('native: no tests yet')\"",
     "lint": "node -e \"console.log('native: no lint configured')\"",
+    "postinstall": "patch-package",
     "clean": "node -e \"console.log('native: nothing to clean')\""
   },
   "dependencies": {
     "@syncmesh/rn-ble": "^0.2.0",
     "buffer": "^6.0.3",
     "expo": "~52.0.0",
+    "expo-asset": "~11.0.5",
     "expo-build-properties": "~0.13.1",
     "expo-camera": "~16.0.7",
     "expo-crypto": "~14.0.1",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "@types/react": "~18.3.12",
+    "patch-package": "^8.0.0",
     "typescript": "~5.3.3"
   }
 }
