@@ -293,7 +293,7 @@ scope. See [`SECURITY.md`](./SECURITY.md) to report a vulnerability.
 - [x] Notification center + synthesized sounds (join/leave/request/message) with toggles
 - [x] Mobile-hardened chat (visual viewport/keyboard, safe areas, larger tap targets)
 - [x] Native Expo app: relay + PIN, file sharing, moderation UI
-- [x] Native BLE transport core + dual-role GATT adapter (SDK 53, `munim-bluetooth`), camera QR
+- [x] Native BLE transport core + dual-role GATT adapter (SDK 53: `react-native-ble-plx` + `react-native-ble-peripheral-manager`), camera QR
 - [x] On-phone relay + RFC 6455 WebSocket codec
 - [x] Multi-admin grants, version/capability negotiation, optional chat timing padding
 - [x] Internal security review ([docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md))
@@ -320,11 +320,11 @@ The native app builds and runs (Android, arm64). Progress and the current state 
 | `crypto.getRandomValues`, `TextEncoder/Decoder`, `Buffer` on Hermes | ✅ polyfilled |
 | Android cleartext `ws://` | ✅ enabled via `expo-build-properties` |
 | On-phone relay (`react-native-tcp-socket`) | ✅ works (verified: phone hosted a session + PIN and reached chat) |
-| Bluetooth LE mesh | 🚧 implemented via **Expo SDK 53 (RN 0.79) + [`munim-bluetooth`](https://www.npmjs.com/package/munim-bluetooth)`** (Nitro module: central **and** peripheral); pending two-phone validation |
+| Bluetooth LE mesh | 🚧 implemented on **Expo SDK 53 (RN 0.79)** with **[`react-native-ble-plx`](https://www.npmjs.com/package/react-native-ble-plx)** (central) + **`react-native-ble-peripheral-manager`** (peripheral/GATT server); session start verified on-device, pending two-radio validation |
 
 **Known issues / next steps for native**
 
-1. **Bluetooth LE.** The earlier stack could not work: `react-native-ble-peripheral` is abandoned (Gradle `compile()`), `react-native-ble-plx` is central-only, and `@syncmesh/rn-ble` is a broken publish (no `expo-module.config.json`) built for a newer Expo Gradle plugin. The app now runs **Expo SDK 53 (RN 0.79)** with **[`munim-bluetooth`](https://www.npmjs.com/package/munim-bluetooth)** (Nitro modules) as a single dual-role adapter (`src/transports/ble.ts`).
+1. **Bluetooth LE.** The app runs **Expo SDK 53 (RN 0.79, New Architecture)** with a single dual-role adapter (`src/transports/ble.ts`): **[`react-native-ble-plx`](https://www.npmjs.com/package/react-native-ble-plx)** for the central role (scan/connect/subscribe/write) and **[`react-native-ble-peripheral-manager`](https://www.npmjs.com/package/react-native-ble-peripheral-manager)** for the peripheral role (advertise + GATT server + notify). Both are native modules, so BLE needs a dev/standalone build (not Expo Go). Session start (advertising, GATT service, invite QR) is verified on-device; confirming the full mesh needs two physical phones. Rejected alternatives: `react-native-ble-peripheral` (abandoned, removed Gradle `compile()`), `react-native-ble-manager` (central-only), `@syncmesh/rn-ble` (broken publish), `munim-bluetooth` (requires Android 17 / compileSdk 37).
 2. **On-phone relay** now works: the host phone opens a relay and shows a PIN (verified on device). Another phone joins with the relay URL + PIN.
 3. **Emulator limitation.** Android emulators have no Bluetooth radio and (for arm64-only APKs) can’t load the native libs; test BLE on two physical phones.
 4. **Testing approach.** Prefer building a **development build** and running on a device/emulator *before* cutting an APK; every runtime error so far (Hermes globals, cleartext, native linking) showed up on-device, and the release APK hides JS stacks.

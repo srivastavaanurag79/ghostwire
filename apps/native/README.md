@@ -13,7 +13,7 @@ crypto, roles and mesh packages as the web app.
 | Chat UI (Telegram-style, dark) | ✅ working |
 | Bluetooth LE transport core (framing, reassembly, adapter contract) | ✅ implemented + CI tests (fake adapter) |
 | BLE session create/join wired into the app | ✅ implemented |
-| BLE dual-role GATT adapter (`munim-bluetooth`, Nitro, Expo SDK 53) | ✅ implemented |
+| BLE dual-role adapter (`react-native-ble-plx` central + `react-native-ble-peripheral-manager` peripheral, Expo SDK 53) | ✅ implemented |
 | Camera QR: invite render + scan | ✅ implemented |
 | On-phone relay (`startLocalRelay`) + WebSocket codec | ✅ implemented |
 | File sharing (pick / chunk / verify / save) | ✅ implemented |
@@ -71,16 +71,17 @@ npx eas-cli login            # free Expo account
 npx eas-cli build -p android --profile preview   # produces a downloadable .apk
 ```
 
-Install that APK on **two physical phones** and test the Bluetooth mesh. (An emulator has no
-Bluetooth radio.) `--profile development` builds a dev-client APK instead.
+Install that APK on **two physical phones** and test the Bluetooth mesh. The Android emulator
+reports a Bluetooth LE radio but its emulated stack is unreliable for advertising/scanning, so
+treat two real phones as the only dependable way to validate the mesh.
 
 **Releases.** Tagging `v*` (or running the workflow manually) triggers
 [`release-apk.yml`](../../.github/workflows/release-apk.yml), which builds the arm64 release APK and
 attaches it to the GitHub Release as `ghostwire.apk`. The web app links to
 `releases/latest/download/ghostwire.apk`, so the binary lives in Releases, not in git history.
 
-**Option B — local build.** Requires the Android SDK (you have it: `%ANDROID_HOME%`) **and JDK 17**
-(Expo SDK 51 / RN 0.74 do not build with JDK 11):
+**Option B — local build.** Requires the Android SDK (you have it: `%ANDROID_HOME%`) **and JDK 17
+or 21** (Expo SDK 53 / RN 0.79):
 
 ```bash
 cd apps/native
@@ -90,7 +91,7 @@ npx expo run:android          # builds + installs a debug dev build to a USB dev
 ```
 
 **Emulator.** `%ANDROID_HOME%\emulator\emulator.exe -avd Medium_Phone_API_35`. Useful for UI,
-relay + PIN, and WebRTC over the network — **not** for BLE.
+relay + PIN, and WebRTC over the network — its emulated Bluetooth is not dependable for the BLE mesh.
 
 **What needs a second physical phone:** only the Bluetooth LE mesh. Everything else (relay + PIN,
 WebRTC, file sharing, moderation) can be exercised with one phone + emulator, or two browsers.
