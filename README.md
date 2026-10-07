@@ -319,13 +319,13 @@ The native app builds and runs (Android, arm64). Progress and the current state 
 | Help screen + “open web version” | ✅ implemented |
 | `crypto.getRandomValues`, `TextEncoder/Decoder`, `Buffer` on Hermes | ✅ polyfilled |
 | Android cleartext `ws://` | ✅ enabled via `expo-build-properties` |
-| On-phone relay (`react-native-tcp-socket`) | 🚧 native module now force-linked; needs an on-device pass |
-| Bluetooth LE mesh | 🚧 blocked: `react-native-ble-peripheral` is abandoned (its Gradle uses the removed `compile()`) and won’t build; needs a maintained peripheral module or a small custom Expo Module |
+| On-phone relay (`react-native-tcp-socket`) | ✅ works (verified: phone hosted a session + PIN and reached chat) |
+| Bluetooth LE mesh | 🚧 blocked on SDK 51; planned via **Expo SDK 52 + [`@syncmesh/rn-ble`](https://www.npmjs.com/package/@syncmesh/rn-ble)** (central **and** peripheral Expo Module) |
 
 **Known issues / next steps for native**
 
-1. **BLE peripheral.** `react-native-ble-plx` (central) links, but a working *advertising/GATT-server* module is required for the dual-role mesh. Options: a small custom Expo Module wrapping `CBPeripheralManager` (iOS) and `BluetoothLeAdvertiser` + `BluetoothGattServer` (Android), or another maintained library.
-2. **On-phone relay verification.** `react-native-tcp-socket` is now linked; it still needs a real-device pass (start the relay, join from a second device).
+1. **Bluetooth LE.** `react-native-ble-peripheral` is abandoned (its Gradle uses the removed `compile()`), and `react-native-ble-plx` is central-only. The plan is to upgrade to **Expo SDK 52** and use **[`@syncmesh/rn-ble`](https://www.npmjs.com/package/@syncmesh/rn-ble)**, an Expo Module with both central and peripheral roles, then re-point the transport at it.
+2. **On-phone relay** now works: the host phone opens a relay and shows a PIN (verified on device). Another phone joins with the relay URL + PIN.
 3. **Emulator limitation.** Android emulators have no Bluetooth radio and (for arm64-only APKs) can’t load the native libs; test BLE on two physical phones.
 4. **Testing approach.** Prefer building a **development build** and running on a device/emulator *before* cutting an APK; every runtime error so far (Hermes globals, cleartext, native linking) showed up on-device, and the release APK hides JS stacks.
 
