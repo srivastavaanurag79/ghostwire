@@ -14,8 +14,9 @@ module.exports = {
     "react-native-ble-plx": {
       root: path.join(__dirname, "node_modules", "react-native-ble-plx"),
     },
-    "react-native-ble-peripheral": {
-      root: path.join(__dirname, "node_modules", "react-native-ble-peripheral"),
-    },
+    // NOTE: react-native-ble-peripheral is intentionally NOT linked: its
+    // android/build.gradle still uses the removed `compile()` method and fails
+    // Gradle 7+. BLE advertising needs a maintained peripheral module (or a
+    // small custom one) before the dual-role mesh can be enabled.
   },
 };

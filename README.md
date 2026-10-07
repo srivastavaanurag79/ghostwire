@@ -306,6 +306,29 @@ scope. See [`SECURITY.md`](./SECURITY.md) to report a vulnerability.
 - [ ] iOS background mesh hardening / Android foreground-service lifecycle
 - [ ] Native parity polish (richer moderation, saved-file management)
 
+## Native app status & known issues
+
+The native app builds and runs (Android, arm64). Progress and the current state of each piece:
+
+| Area | Status |
+|---|---|
+| App launches, Home/Help/Chat UI, logo, in-app back navigation | ✅ works |
+| Relay + PIN over WebSockets (LAN or hosted relay) | ✅ works |
+| Scan/paste a web-app **relay** invite (QR + PIN interop) | ✅ works |
+| Camera QR scanner (full-screen modal) | ✅ implemented |
+| Help screen + “open web version” | ✅ implemented |
+| `crypto.getRandomValues`, `TextEncoder/Decoder`, `Buffer` on Hermes | ✅ polyfilled |
+| Android cleartext `ws://` | ✅ enabled via `expo-build-properties` |
+| On-phone relay (`react-native-tcp-socket`) | 🚧 native module now force-linked; needs an on-device pass |
+| Bluetooth LE mesh | 🚧 blocked: `react-native-ble-peripheral` is abandoned (its Gradle uses the removed `compile()`) and won’t build; needs a maintained peripheral module or a small custom Expo Module |
+
+**Known issues / next steps for native**
+
+1. **BLE peripheral.** `react-native-ble-plx` (central) links, but a working *advertising/GATT-server* module is required for the dual-role mesh. Options: a small custom Expo Module wrapping `CBPeripheralManager` (iOS) and `BluetoothLeAdvertiser` + `BluetoothGattServer` (Android), or another maintained library.
+2. **On-phone relay verification.** `react-native-tcp-socket` is now linked; it still needs a real-device pass (start the relay, join from a second device).
+3. **Emulator limitation.** Android emulators have no Bluetooth radio and (for arm64-only APKs) can’t load the native libs; test BLE on two physical phones.
+4. **Testing approach.** Prefer building a **development build** and running on a device/emulator *before* cutting an APK; every runtime error so far (Hermes globals, cleartext, native linking) showed up on-device, and the release APK hides JS stacks.
+
 ## Legal
 
 GhostWire is provided **as-is**, without warranty. The creator and contributors are **not
