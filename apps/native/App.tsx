@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   BackHandler,
+  Image,
   Linking,
   Modal,
   SafeAreaView,
@@ -221,6 +222,7 @@ export default function App() {
     <SafeAreaView style={styles.screen}>
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.homeContent}>
+        <Image source={require("./assets/icon.png")} style={styles.logoImage} />
         <Text style={styles.logo}>GhostWire</Text>
         <Text style={styles.tagline}>
           Serverless, ephemeral, encrypted mesh chat. No accounts. Nothing stored.
@@ -429,6 +431,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#0e1621" },
   homeContent: { padding: 24, gap: 12, flexGrow: 1, justifyContent: "center" },
   logo: { color: "#fff", fontSize: 34, fontWeight: "700", textAlign: "center" },
+  logoImage: { width: 96, height: 96, borderRadius: 24, alignSelf: "center", marginBottom: 4 },
   tagline: { color: "#8aa0b4", fontSize: 15, textAlign: "center", marginBottom: 12, lineHeight: 22 },
   label: { color: "#fff", fontSize: 13, fontWeight: "600", marginTop: 8 },
   input: {

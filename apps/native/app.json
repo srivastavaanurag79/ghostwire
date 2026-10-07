@@ -27,6 +27,7 @@
     },
     "android": {
       "package": "app.ghostwire",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0e1621"
@@ -44,6 +45,15 @@
         "FOREGROUND_SERVICE_CONNECTED_DEVICE"
       ]
     },
-    "plugins": []
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ]
   }
 }
