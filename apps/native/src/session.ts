@@ -32,6 +32,7 @@ import { decodeQRPayload, encodeQRPayload, type QRPayload } from "@ghostwire/qr"
 import { BleTransport } from "./transports/ble";
 import { createDualRoleAdapter } from "./transports/ble-peripheral";
 import { startLocalRelay, type LocalRelayHandle } from "./server/local-relay";
+import type { SoundName } from "./sound";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -121,6 +122,17 @@ export class NativeSession {
   private runtime: Runtime | null = null;
   private state: NativeState = { ...initialState };
   private listeners = new Set<(state: NativeState) => void>();
+  private soundHandlers = new Set<(name: SoundName) => void>();
+
+  /** Subscribe to notification-sound events. */
+  onSound(cb: (name: SoundName) => void): () => void {
+    this.soundHandlers.add(cb);
+    return () => this.soundHandlers.delete(cb);
+  }
+
+  private emitSound(name: SoundName): void {
+    for (const handler of this.soundHandlers) handler(name);
+  }
 
   getState = (): NativeState => this.state;
 
@@ -153,14 +165,19 @@ export class NativeSession {
   private onMessage = (inner: InnerMessage, fromPeerId: string): void => {
     const rt = this.runtime;
     if (!rt) return;
+    const existing = rt.mesh.peers.get(fromPeerId);
     rt.mesh.peers.upsert(fromPeerId, {
       name: inner.sender.name,
       pubkey: inner.sender.pubkey,
       role: inner.sender.role,
     });
+    if (!existing && inner.type !== "join_request" && inner.sender.pubkey.length > 0) {
+      this.emitSound("join");
+    }
 
     if (inner.type === "chat") {
       const body = inner.body as ChatBody;
+      this.emitSound("message");
       this.set({
         messages: [
           ...this.state.messages,
@@ -176,6 +193,7 @@ export class NativeSession {
       });
     } else if (inner.type === "join_request") {
       if (!rt.isHost && !canSend(rt.role)) return;
+      this.emitSound("request");
       const body = inner.body as JoinRequestBody;
       const requestedRole: Role = "listener";
       rt.pendingJoinPeers.set(fromPeerId, {
@@ -202,12 +220,15 @@ export class NativeSession {
       }
       rt.mesh.updateIdentity({ token: body.token, role: body.token.role });
       this.set({ role: body.token.role });
+      this.emitSound("success");
       this.system(`You are connected as ${body.token.role}.`);
     } else if (inner.type === "token_revoke") {
       const body = inner.body as TokenRevokeBody;
       rt.mesh.revoke(body.revoke);
+      this.emitSound("leave");
       this.system(`${body.revoke.length} participant(s) were removed.`);
     } else if (inner.type === "session_close") {
+      this.emitSound("error");
       this.system("The session was closed by the admin.");
       this.panicWipe();
     } else if (inner.type === "file_offer") {
@@ -641,6 +662,7 @@ export class NativeSession {
     rt.mesh.send("join_accept", body);
     rt.pendingJoinPeers.delete(peerId);
     this.set({ joinRequests: this.state.joinRequests.filter((r) => r.peerId !== peerId) });
+    this.emitSound("success");
     this.system(`${request.name} joined as ${role}.`);
   };
 

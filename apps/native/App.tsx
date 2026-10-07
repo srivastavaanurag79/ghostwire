@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
+  ActivityIndicator,
   BackHandler,
   Image,
   Linking,
@@ -17,6 +18,7 @@ import type { ChatMessage, Role } from "@ghostwire/protocol";
 import { NativeSession } from "./src/session";
 import { InviteQR } from "./src/components/InviteQR";
 import { QrScanner } from "./src/components/QrScanner";
+import { playSound, setSoundEnabled } from "./src/sound";
 
 const session = new NativeSession();
 const DEFAULT_RELAY = "ws://192.168.1.10:8787";
@@ -67,6 +69,13 @@ function Main() {
   const [help, setHelp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+
+  useEffect(() => {
+    return session.onSound((sound) => {
+      void playSound(sound);
+    });
+  }, []);
 
   const canSpeak = state.role === "admin" || state.role === "moderator" || state.role === "speaker";
 
@@ -119,6 +128,16 @@ function Main() {
                   connected
                 </Text>
               </View>
+              <TouchableOpacity
+                style={styles.headerBtn}
+                onPress={() => {
+                  const next = !soundOn;
+                  setSoundOn(next);
+                  setSoundEnabled(next);
+                }}
+              >
+                <Text style={styles.headerBtnText}>{soundOn ? "🔊" : "🔇"}</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.headerBtn} onPress={() => setHelp(true)}>
                 <Text style={styles.headerBtnText}>?</Text>
               </TouchableOpacity>
@@ -336,10 +355,11 @@ function Main() {
                     })
                   }
                 >
-                  <Text style={styles.primaryText}>
-                    {busy
-                      ? "Connecting…"
-                      : mode === "create"
+                  {busy ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryText}>
+                      {mode === "create"
                         ? "Open session"
                         : mode === "hostphone"
                           ? "Start hosting"
@@ -348,7 +368,8 @@ function Main() {
                             : mode === "ble"
                               ? "Start mesh"
                               : "Join session"}
-                  </Text>
+                    </Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.secondary} onPress={() => setMode("home")}>
                   <Text style={styles.secondaryText}>Back</Text>
