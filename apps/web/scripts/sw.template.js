@@ -1,13 +1,18 @@
 /* GhostWire service worker: offline app shell.
  *
+ * Generated at build time by scripts/stamp.mjs — the version below is replaced
+ * with the per-build id so every deploy installs a fresh worker and drops the
+ * previous caches (a stale cache-first JS chunk is how a device can end up
+ * running an old bundle after a deploy).
+ *
  * Strategy:
  *  - Precache the shell on install.
- *  - Navigations: network-first, fall back to cached shell when offline.
+ *  - Navigations: network-first, fall back to the cached shell when offline.
  *  - Static assets (same-origin GET): cache-first, then network, and cache the
  *    result for next time. This makes the PWA fully usable offline after the
  *    first visit without ever contacting a third party.
  */
-const VERSION = "ghostwire-v3";
+const VERSION = "__GW_VERSION__";
 const SHELL = ["/", "/manifest.webmanifest", "/logo.svg", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
