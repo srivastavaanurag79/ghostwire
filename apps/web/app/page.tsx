@@ -10,11 +10,15 @@ import { useUi } from "@/lib/store";
 
 export default function HomePage() {
   const status = useUi((s) => s.status);
+  const joined = useUi((s) => s.joined);
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "active") router.replace("/chat");
-  }, [status, router]);
+    // Only enter the chat once we are actually in the session. A pending joiner
+    // is "active" but not joined yet, so bouncing on `active` alone would send
+    // them to /chat, which then bounces back here — a redirect loop.
+    if (status === "active" && joined) router.replace("/chat");
+  }, [status, joined, router]);
 
   return (
     <main className="relative min-h-dvh overflow-hidden bg-chat-dark text-white">

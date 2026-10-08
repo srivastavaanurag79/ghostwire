@@ -62,8 +62,11 @@ export default function ChatPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (status !== "active" || !joined) router.replace("/");
-  }, [status, joined, router]);
+    // No session at all: leave. A pending joiner (active but not joined) stays
+    // here only while waiting for approval — see the fallback below — instead of
+    // bouncing to "/" and back, which was a redirect loop.
+    if (status !== "active") router.replace("/");
+  }, [status, router]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -131,6 +134,24 @@ export default function ChatPage() {
     return (
       <main className="flex min-h-dvh items-center justify-center">
         <p className="text-sm gw-muted">No active session.</p>
+      </main>
+    );
+  }
+
+  if (!joined) {
+    return (
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
+        <Logo size={56} className="animate-pulse" />
+        <p className="text-sm font-medium">Waiting for the host to approve…</p>
+        <p className="text-xs gw-muted">
+          You&apos;ll enter the chat as soon as you&apos;re approved.
+        </p>
+        <button
+          onClick={() => router.push("/join")}
+          className="rounded-xl border border-white/15 px-4 py-2 text-xs font-medium hover:bg-white/5"
+        >
+          Back to join
+        </button>
       </main>
     );
   }

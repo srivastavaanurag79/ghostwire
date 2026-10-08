@@ -7,7 +7,7 @@
  *    result for next time. This makes the PWA fully usable offline after the
  *    first visit without ever contacting a third party.
  */
-const VERSION = "ghostwire-v2";
+const VERSION = "ghostwire-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/logo.svg", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -42,10 +42,16 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(VERSION).then((cache) => cache.put("/", copy));
+          // Refresh the offline shell only from the real app entry ("/").
+          // Caching every route under "/" would let /chat or /join HTML be
+          // served as the homepage, which breaks the in-memory app on reload.
+          if (url.pathname === "/") {
+            const copy = response.clone();
+            caches.open(VERSION).then((cache) => cache.put("/", copy));
+          }
           return response;
         })
+        // Offline (or network failure): fall back to the cached app shell.
         .catch(() => caches.match("/")),
     );
     return;
